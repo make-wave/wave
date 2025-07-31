@@ -6,7 +6,7 @@ wave is an HTTP client for folks who like their terminal. It provides a simple, 
 - GET, POST, PUT, PATCH, DELETE methods
 - Specify headers and body data inline
 - Responses printed in an easy-to-read format
-- Save and run collections of requests via YAML config files [coming soon!]
+- Save and run collections of requests via YAML config files
 - Easy integration with other terminal applications
 - MCP integration for LLM agents [coming soon!]
 - GraphQL requests [coming soon!]
@@ -33,7 +33,41 @@ wave delete https://httpbin.org/delete X-Delete-Reason:cleanup
 
 - **Headers:** Use `key:value` syntax after the URL (e.g., `Authorization:Bearer123`).
 - **Body Data:** For POST/PUT/PATCH, use `key=value` syntax (e.g., `name=alice`). Body data defaults to JSON. Specify form data with `--form`.
-- **Collections:** Save requests in YAML files and run them by name: `wave my_collection my_request`
+- **Collections:** Save requests in YAML files in the `.wave` directory and run them by name: `wave my_collection my_request`
+
+### Example Collection YAML
+
+```yaml
+variables:
+  base_url: https://api.example.com
+  auth_token: secret123
+  user_id: 42
+
+requests:
+  - name: Get User Info
+    method: GET
+    url: ${base_url}/users/${user_id}
+    headers:
+      Authorization: Bearer ${env:API_TOKEN}
+      Accept: application/json
+
+  - name: Create User
+    method: POST
+    url: ${base_url}/users
+    headers:
+      Authorization: Bearer ${env:API_TOKEN}
+      Content-Type: application/json
+    body:
+      json:
+        name: Alice
+        email: alice@example.com
+```
+
+- Use `${varName}` to reference variables defined in the file.
+- Use `${env:VAR_NAME}` to reference environment variables.
+- Place your YAML files in the `.wave` directory, e.g., `.wave/example_api.yaml`.
+- Run a request with: `wave example_api "Get User Info"`
+- The collection name is always the filename (without `.yaml`), not a field in the file.
 
 ## Help
 

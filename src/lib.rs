@@ -1,7 +1,8 @@
 pub mod http_client;
 pub mod printer;
+pub mod collection;
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use http_client::{Client, ReqwestBackend};
 
 #[derive(Parser)]
@@ -11,47 +12,32 @@ pub struct Cli {
     /// Print the full response (status, headers, body)
     #[arg(short, long, global = true)]
     pub verbose: bool,
-    #[command(subcommand)]
-    pub command: Commands,
+
+    /// Collection name (filename without .yaml)
+    #[arg()]
+    pub collection: Option<String>,
+
+    /// Request name
+    #[arg()]
+    pub request: Option<String>,
+
+    /// HTTP method (get, post, put, patch, delete)
+    #[arg()]
+    pub method: Option<String>,
+
+    /// URL for HTTP commands
+    #[arg()]
+    pub url: Option<String>,
+
+    /// Params for HTTP commands
+    #[arg(value_parser, num_args = 0..)]
+    pub params: Vec<String>,
+
+    /// Send body as application/x-www-form-urlencoded instead of JSON
+    #[arg(long, default_value_t = false)]
+    pub form: bool,
 }
 
-#[derive(Subcommand)]
-pub enum Commands {
-    Get {
-        url: String,
-        #[arg(value_parser, num_args = 0..)]
-        params: Vec<String>,
-    },
-    Post {
-        url: String,
-        #[arg(value_parser, num_args = 0..)]
-        params: Vec<String>,
-        /// Send body as application/x-www-form-urlencoded instead of JSON
-        #[arg(long, default_value_t = false)]
-        form: bool,
-    },
-    Put {
-        url: String,
-        #[arg(value_parser, num_args = 0..)]
-        params: Vec<String>,
-        /// Send body as application/x-www-form-urlencoded instead of JSON
-        #[arg(long, default_value_t = false)]
-        form: bool,
-    },
-    Delete {
-        url: String,
-        #[arg(value_parser, num_args = 0..)]
-        params: Vec<String>,
-    },
-    Patch {
-        url: String,
-        #[arg(value_parser, num_args = 0..)]
-        params: Vec<String>,
-        /// Send body as application/x-www-form-urlencoded instead of JSON
-        #[arg(long, default_value_t = false)]
-        form: bool,
-    },
-}
 
 pub type HeaderDataTuple = (Vec<(String, String)>, Vec<(String, String)>);
 
@@ -81,7 +67,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use printer::print_response;
 use std::time::Duration;
 
-fn run_with_spinner<F, T>(message: &str, f: F) -> T
+pub fn run_with_spinner<F, T>(message: &str, f: F) -> T
 where
     F: FnOnce() -> T,
 {
