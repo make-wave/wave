@@ -1,6 +1,6 @@
+pub mod collection;
 pub mod http_client;
 pub mod printer;
-pub mod collection;
 
 use clap::Parser;
 use http_client::{Client, ReqwestBackend};
@@ -37,7 +37,6 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub form: bool,
 }
-
 
 pub type HeaderDataTuple = (Vec<(String, String)>, Vec<(String, String)>);
 

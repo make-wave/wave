@@ -49,12 +49,12 @@ pub fn resolve_vars(input: &str, file_vars: &HashMap<String, String>) -> Result<
             if let Some(env_var) = var_name.strip_prefix("env:") {
                 match std::env::var(env_var) {
                     Ok(val) => result.push_str(&val),
-                    Err(_) => return Err(format!("Missing environment variable: {}", env_var)),
+                    Err(_) => return Err(format!("Missing environment variable: {env_var}")),
                 }
             } else {
                 match file_vars.get(&var_name) {
                     Some(val) => result.push_str(val),
-                    None => return Err(format!("Missing variable: {}", var_name)),
+                    None => return Err(format!("Missing variable: {var_name}")),
                 }
             }
         } else {
