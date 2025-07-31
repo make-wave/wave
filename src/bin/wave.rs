@@ -33,8 +33,10 @@ fn main() {
 
     // Otherwise, if both collection and request are present, run collection logic
     if let (Some(collection), Some(request)) = (cli.collection.as_ref(), cli.request.as_ref()) {
-        let path = format!(".wave/{collection}.yaml");
-        match load_collection(&path) {
+        let yaml_path = format!(".wave/{collection}.yaml");
+        let yml_path = format!(".wave/{collection}.yml");
+        let coll_result = load_collection(&yaml_path).or_else(|_| load_collection(&yml_path));
+        match coll_result {
             Ok(coll) => {
                 let file_vars = coll.variables.unwrap_or_default();
                 match coll.requests.iter().find(|r| r.name == *request) {
