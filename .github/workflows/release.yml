@@ -1,0 +1,72 @@
+---
+name: Release
+on:
+  push:
+    tags:
+      - v*  # Only run on version tags like v1.2.3
+  workflow_dispatch:  # Allow manual triggering if needed
+jobs:
+  build:
+    name: Build binaries
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+      - name: Build release binary
+        run: cargo build --release
+      - name: Rename binary for platform
+        run: mv target/release/wave wave-${{ runner.os }}
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave-${{ runner.os }}
+          path: wave-${{ runner.os }}
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: wave-ubuntu-latest
+          path: ./artifacts
+      - name: Download macOS binary
+        uses: actions/download-artifact@v4
+        with:
+          name: wave-macos-latest
+          path: ./artifacts
+
+      # Generate release notes from commit messages since previous version tag
+      - name: Generate release notes
+        id: notes
+        run: |
+          git fetch --tags
+          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]' | grep -v "^${CURRENT_TAG}$" | tail -n 1)
+           if [ -z "$PREV_TAG" ]; then
+             NOTES=$(git log --pretty=format:"%s%n%b" --reverse | grep -v '^chore')
+           else
+             NOTES=$(git log $PREV_TAG..$CURRENT_TAG --pretty=format:"%s%n%b" --reverse | grep -v '^chore')
+           fi
+           echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
+           echo "$NOTES" >> $GITHUB_ENV
+           echo "EOF" >> $GITHUB_ENV
+      # Create GitHub Release and upload binaries
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ./artifacts/wave-ubuntu-latest
+            ./artifacts/wave-macos-latest
+          body: ${{ env.RELEASE_NOTES }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

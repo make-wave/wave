@@ -1,0 +1,26 @@
+---
+name: CI
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths: [.github/workflows/ci.yml, src/**, Cargo.toml, Cargo.lock]
+jobs:
+  check:
+    name: Lint, Format, and Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+      - name: Install clippy and fmt
+        run: rustup component add clippy rustfmt
+      - name: Lint (cargo clippy)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Check formatting (cargo fmt)
+        run: cargo fmt --all -- --check
+      - name: Run tests
+        run: cargo test --all --release
