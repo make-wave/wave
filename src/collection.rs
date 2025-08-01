@@ -197,7 +197,11 @@ requests:
         let path = "/tmp/test_wave_collection.yaml";
         fs::write(path, yaml).unwrap();
         env::set_var("TEST_TOKEN", "secret123");
-        let coll = load_collection(path).unwrap();
+        let mut path = std::env::temp_dir();
+        path.push("test_wave_collection.yaml");
+        fs::write(&path, yaml).unwrap();
+        env::set_var("TEST_TOKEN", "secret123");
+        let coll = load_collection(path.to_str().unwrap()).unwrap();
         let file_vars = coll.variables.clone().unwrap();
         let req = coll.requests.iter().find(|r| r.name == "Get User").unwrap();
         let resolved = resolve_request_vars(req, &file_vars).unwrap();
