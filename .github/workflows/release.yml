@@ -1,5 +1,7 @@
 ---
 name: Release
+permissions:
+  contents: write
 on:
   push:
     tags:
@@ -22,12 +24,12 @@ jobs:
       - name: Build release binary
         run: cargo build --release
       - name: Rename binary for platform
-        run: mv target/release/wave wave-${{ runner.os }}
+        run: mv target/release/wave wave-${{ matrix.os }}
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wave-${{ runner.os }}
-          path: wave-${{ runner.os }}
+          name: wave-${{ matrix.os }}
+          path: wave-${{ matrix.os }}
   release:
     name: Create GitHub Release
     needs: build
