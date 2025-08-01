@@ -33,6 +33,8 @@ wave delete https://httpbin.org/delete X-Delete-Reason:cleanup
 
 - **Headers:** Use `key:value` syntax after the URL (e.g., `Authorization:Bearer123`).
 - **Body Data:** For POST/PUT/PATCH, use `key=value` syntax (e.g., `name=alice`). Body data defaults to JSON. Specify form data with `--form`.
+  - **Important:** If using `--form`, it must appear before any body data or headers (e.g., `wave post https://httpbin.org/post --form name=alice age=30`).
+  - If you place `--form` after any header or body param, wave will show an error and suggest the correct usage.
 - **Collections:** Save requests in YAML files in the `.wave` directory and run them by name: `wave my_collection my_request`
 
 ### Example Collection YAML

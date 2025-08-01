@@ -1,0 +1,10 @@
+requests:
+  - name: httpbin_post
+    method: POST
+    url: https://httpbin.org/post
+    headers:
+      Accept: application/json
+    body:
+      json:
+        name: Alice
+        email: alice@example.com

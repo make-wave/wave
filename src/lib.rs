@@ -9,33 +9,21 @@ use http_client::{Client, ReqwestBackend};
 #[command(name = "wave")]
 #[command(about = "A terminal-based HTTP client", long_about = None)]
 pub struct Cli {
-    /// Print the full response (status, headers, body)
-    #[arg(short, long, global = true)]
-    pub verbose: bool,
-
-    /// Collection name (filename without .yaml)
+    /// HTTP method or collection name
     #[arg()]
-    pub collection: Option<String>,
-
-    /// Request name
+    pub first: String,
+    /// URL or request name
     #[arg()]
-    pub request: Option<String>,
-
-    /// HTTP method (get, post, put, patch, delete)
-    #[arg()]
-    pub method: Option<String>,
-
-    /// URL for HTTP commands
-    #[arg()]
-    pub url: Option<String>,
-
-    /// Params for HTTP commands
-    #[arg(value_parser, num_args = 0..)]
+    pub second: String,
+    /// Trailing params (headers/body data)
+    #[arg(value_parser, trailing_var_arg = true)]
     pub params: Vec<String>,
-
     /// Send body as application/x-www-form-urlencoded instead of JSON
     #[arg(long, default_value_t = false)]
     pub form: bool,
+    /// Print the full response (status, headers, body)
+    #[arg(short, long, global = true)]
+    pub verbose: bool,
 }
 
 pub type HeaderDataTuple = (Vec<(String, String)>, Vec<(String, String)>);
@@ -44,6 +32,10 @@ pub fn parse_params(params: &[String]) -> HeaderDataTuple {
     let mut headers = Vec::new();
     let mut data = Vec::new();
     for param in params {
+        // Ignore --form if present in params
+        if param == "--form" {
+            continue;
+        }
         if let Some((k, v)) = param.split_once(':') {
             headers.push((k.trim().to_string(), v.trim().to_string()));
         } else if let Some((k, v)) = param.split_once('=') {
@@ -94,8 +86,10 @@ pub fn handle_get(url: &str, params: &[String], verbose: bool, spinner_msg: &str
 }
 
 pub fn handle_post(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
+
     let url = ensure_url_scheme(url);
     let (mut headers, data) = parse_params(params);
+
     let body = if form {
         Client::<ReqwestBackend>::prepare_form_body(&data, &mut headers)
     } else {
@@ -110,8 +104,10 @@ pub fn handle_post(url: &str, params: &[String], form: bool, verbose: bool, spin
 }
 
 pub fn handle_put(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
+
     let url = ensure_url_scheme(url);
     let (mut headers, data) = parse_params(params);
+
     let body = if form {
         Client::<ReqwestBackend>::prepare_form_body(&data, &mut headers)
     } else {
@@ -126,8 +122,10 @@ pub fn handle_put(url: &str, params: &[String], form: bool, verbose: bool, spinn
 }
 
 pub fn handle_patch(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
+
     let url = ensure_url_scheme(url);
     let (mut headers, data) = parse_params(params);
+
     let body = if form {
         Client::<ReqwestBackend>::prepare_form_body(&data, &mut headers)
     } else {
@@ -148,4 +146,25 @@ pub fn handle_delete(url: &str, params: &[String], verbose: bool, spinner_msg: &
     let rt = tokio::runtime::Runtime::new().unwrap();
     let result = run_with_spinner(spinner_msg, || rt.block_on(client.delete(&url, headers)));
     print_response(result, verbose);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_params_json_body() {
+        let params = vec!["name=joe".to_string(), "age=42".to_string(), "Authorization:Bearer123".to_string()];
+        let (headers, data) = parse_params(&params);
+        assert_eq!(headers, vec![("Authorization".to_string(), "Bearer123".to_string())]);
+        assert_eq!(data, vec![("name".to_string(), "joe".to_string()), ("age".to_string(), "42".to_string())]);
+    }
+
+    #[test]
+    fn test_parse_params_form_flag_ignored() {
+        let params = vec!["--form".to_string(), "foo=bar".to_string(), "baz=qux".to_string(), "X-Test:1".to_string()];
+        let (headers, data) = parse_params(&params);
+        assert_eq!(headers, vec![("X-Test".to_string(), "1".to_string())]);
+        assert_eq!(data, vec![("foo".to_string(), "bar".to_string()), ("baz".to_string(), "qux".to_string())]);
+    }
 }
