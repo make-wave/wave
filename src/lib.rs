@@ -2,28 +2,83 @@ pub mod collection;
 pub mod http_client;
 pub mod printer;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use http_client::{Client, ReqwestBackend};
+
+#[derive(Subcommand)]
+pub enum Command {
+    /// Send a GET request
+    Get {
+        /// The URL to send the request to
+        url: String,
+        /// Headers and body data (key:value or key=value)
+        #[arg(value_parser, trailing_var_arg = true)]
+        params: Vec<String>,
+        /// Print the full response (status, headers, body)
+        #[arg(short, long)]
+        verbose: bool,
+    },
+    /// Send a POST request
+    Post {
+        url: String,
+        #[arg(value_parser, trailing_var_arg = true)]
+        params: Vec<String>,
+        #[arg(long)]
+        form: bool,
+        #[arg(short, long)]
+        verbose: bool,
+    },
+    /// Send a PUT request
+    Put {
+        url: String,
+        #[arg(value_parser, trailing_var_arg = true)]
+        params: Vec<String>,
+        #[arg(long)]
+        form: bool,
+        #[arg(short, long)]
+        verbose: bool,
+    },
+    /// Send a PATCH request
+    Patch {
+        url: String,
+        #[arg(value_parser, trailing_var_arg = true)]
+        params: Vec<String>,
+        #[arg(long)]
+        form: bool,
+        #[arg(short, long)]
+        verbose: bool,
+    },
+    /// Send a DELETE request
+    Delete {
+        url: String,
+        #[arg(value_parser, trailing_var_arg = true)]
+        params: Vec<String>,
+        #[arg(short, long)]
+        verbose: bool,
+    },
+    /// Run a saved request from a collection
+    #[command(
+        short_flag = 'c',
+        visible_alias = "c",
+        visible_short_flag_alias = 'c',
+        about = "Run a saved request from a collection"
+    )]
+    Collection {
+        /// Name of the collection
+        collection: String,
+        /// Name of the request in the collection
+        request: String,
+        #[arg(short, long)]
+        verbose: bool,
+    },
+}
 
 #[derive(Parser)]
 #[command(name = "wave")]
-#[command(about = "A terminal-based HTTP client", long_about = None)]
+#[command(author, version, about, long_about)]
 pub struct Cli {
-    /// HTTP method (uppercase, e.g., GET, POST) or collection name (filename or internal identifier)
-    #[arg()]
-    pub first: String,
-    /// URL or request name
-    #[arg()]
-    pub second: String,
-    /// Trailing params (headers/body data)
-    #[arg(value_parser, trailing_var_arg = true)]
-    pub params: Vec<String>,
-    /// Send body as application/x-www-form-urlencoded instead of JSON
-    #[arg(long, default_value_t = false)]
-    pub form: bool,
-    /// Print the full response (status, headers, body)
-    #[arg(short, long, global = true)]
-    pub verbose: bool,
+    #[command(subcommand)]
+    pub command: Command,
 }
 
 pub type HeaderDataTuple = (Vec<(String, String)>, Vec<(String, String)>);
