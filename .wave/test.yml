@@ -28,3 +28,8 @@ requests:
   - name: testdelete
     method: DELETE
     url: ${baseUrl}/delete
+  - name: testenvvar
+    method: GET
+    url: ${baseUrl}/get
+    headers:
+      x-api-key: ${env:apiKey}
