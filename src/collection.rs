@@ -13,14 +13,66 @@ pub struct Request {
     pub method: String,
     pub url: String,
     pub headers: Option<HashMap<String, String>>,
-    pub body: Option<Body>,
+    pub body: Option<Body>, // Body is now validated for mutual exclusivity
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
+use serde::de::{self, Deserializer, MapAccess, Visitor};
+use std::fmt;
+
+#[derive(Debug)]
 pub enum Body {
     Json(HashMap<String, serde_yaml::Value>),
     Form(HashMap<String, String>),
+}
+
+impl<'de> Deserialize<'de> for Body {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct BodyVisitor;
+        impl<'de> Visitor<'de> for BodyVisitor {
+            type Value = Body;
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a map with either 'json' or 'form' key")
+            }
+            fn visit_map<A>(self, mut map: A) -> Result<Body, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut json: Option<HashMap<String, serde_yaml::Value>> = None;
+                let mut form: Option<HashMap<String, String>> = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "json" => {
+                            if json.is_some() {
+                                return Err(de::Error::duplicate_field("json"));
+                            }
+                            json = Some(map.next_value()?);
+                        }
+                        "form" => {
+                            if form.is_some() {
+                                return Err(de::Error::duplicate_field("form"));
+                            }
+                            form = Some(map.next_value()?);
+                        }
+                        other => {
+                            return Err(de::Error::unknown_field(other, &["json", "form"]));
+                        }
+                    }
+                }
+                match (json, form) {
+                    (Some(_), Some(_)) => {
+                        Err(de::Error::custom("Only one of 'json' or 'form' can be used in the body of a request. Please specify either 'json' or 'form', not both."))
+                    }
+                    (Some(j), None) => Ok(Body::Json(j)),
+                    (None, Some(f)) => Ok(Body::Form(f)),
+                    (None, None) => Err(de::Error::custom("Body must contain either 'json' or 'form' key.")),
+                }
+            }
+        }
+        deserializer.deserialize_map(BodyVisitor)
+    }
 }
 
 /// Load collection and parse yaml collection
@@ -85,7 +137,9 @@ pub fn resolve_request_vars(
             let mut resolved = HashMap::new();
             for (k, v) in map {
                 let resolved_value = match v {
-                    serde_yaml::Value::String(s) => serde_yaml::Value::String(resolve_vars(s, file_vars)?),
+                    serde_yaml::Value::String(s) => {
+                        serde_yaml::Value::String(resolve_vars(s, file_vars)?)
+                    }
                     other => other.clone(),
                 };
                 resolved.insert(k.clone(), resolved_value);

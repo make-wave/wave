@@ -12,6 +12,13 @@ requests:
       json:
         key: value
         foo: bar
+  - name: testform
+    method: POST
+    url: ${baseUrl}/post
+    body:
+      form:
+        key: value
+        foo: bar
   - name: testput
     method: PUT
     url: ${baseUrl}/put

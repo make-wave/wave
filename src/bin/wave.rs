@@ -13,18 +13,20 @@ fn main() {
                 "wave".to_string(),
                 cli.first.clone(),
                 cli.second.clone(),
-                "--form".to_string()
+                "--form".to_string(),
             ];
             corrected.extend(cli.params.iter().filter(|p| *p != "--form").cloned());
             use anstyle::{AnsiColor, Color, Style};
 
-            let style = Style::new().fg_color(Some(Color::Ansi(AnsiColor::Red))).bold();
+            let style = Style::new()
+                .fg_color(Some(Color::Ansi(AnsiColor::Red)))
+                .bold();
             let reset = Style::new().render();
             let error_prefix = format!("{}Error:{} ", style.render(), reset);
             let reset = "\x1b[0m"; // ANSI reset
 
-eprint!("{}{}", error_prefix, reset);
-eprintln!(
+            eprint!("{error_prefix}{reset}");
+            eprintln!(
     " --form must appear before any headers or body parameters.\n\nYour command:\n  wave {} {} {}\n\nCorrect usage:\n  {}\n",
     cli.first,
     cli.second,
@@ -96,52 +98,76 @@ eprintln!(
                                 wave::printer::print_response(result, verbose);
                             }
                             "POST" | "PUT" | "PATCH" => {
-                                let headers: Vec<(String, String)> =
+                                let mut headers: Vec<(String, String)> =
                                     resolved.headers.unwrap_or_default().into_iter().collect();
-let (body, _is_form) = match &resolved.body {
-    Some(wave::collection::Body::Json(map)) => {
-        // Convert serde_yaml::Value to serde_json::Value
-        fn yaml_to_json(val: &serde_yaml::Value) -> serde_json::Value {
-            match val {
-                serde_yaml::Value::Null => serde_json::Value::Null,
-                serde_yaml::Value::Bool(b) => serde_json::Value::Bool(*b),
-                serde_yaml::Value::Number(n) => {
-                    if let Some(i) = n.as_i64() {
-                        serde_json::Value::Number(i.into())
-                    } else if let Some(f) = n.as_f64() {
-                        serde_json::Number::from_f64(f)
-                            .map(serde_json::Value::Number)
-                            .unwrap_or(serde_json::Value::Null)
-                    } else {
-                        serde_json::Value::Null
-                    }
-                }
-                serde_yaml::Value::String(s) => serde_json::Value::String(s.clone()),
-                serde_yaml::Value::Sequence(seq) => {
-                    serde_json::Value::Array(seq.iter().map(yaml_to_json).collect())
-                }
-                serde_yaml::Value::Mapping(map) => {
-                    let mut obj = serde_json::Map::new();
-                    for (k, v) in map {
-                        let key = match k {
-                            serde_yaml::Value::String(s) => s.clone(),
-                            _ => serde_yaml::to_string(k).unwrap_or_default(),
-                        };
-                        obj.insert(key, yaml_to_json(v));
-                    }
-                    serde_json::Value::Object(obj)
-                }
-                _ => serde_json::Value::Null,
-            }
-        }
-        let mut json_map = serde_json::Map::new();
-        for (k, v) in map {
-            json_map.insert(k.clone(), yaml_to_json(v));
-        }
-        let json_str = serde_json::to_string(&json_map)
-            .unwrap_or_else(|_| "{}".to_string());
-        (json_str, false)
-    }                                    Some(wave::collection::Body::Form(map)) => {
+                                let (body, _is_form) = match &resolved.body {
+                                    Some(wave::collection::Body::Json(map)) => {
+                                        // Convert serde_yaml::Value to serde_json::Value
+                                        fn yaml_to_json(
+                                            val: &serde_yaml::Value,
+                                        ) -> serde_json::Value
+                                        {
+                                            match val {
+                                                serde_yaml::Value::Null => serde_json::Value::Null,
+                                                serde_yaml::Value::Bool(b) => {
+                                                    serde_json::Value::Bool(*b)
+                                                }
+                                                serde_yaml::Value::Number(n) => {
+                                                    if let Some(i) = n.as_i64() {
+                                                        serde_json::Value::Number(i.into())
+                                                    } else if let Some(f) = n.as_f64() {
+                                                        serde_json::Number::from_f64(f)
+                                                            .map(serde_json::Value::Number)
+                                                            .unwrap_or(serde_json::Value::Null)
+                                                    } else {
+                                                        serde_json::Value::Null
+                                                    }
+                                                }
+                                                serde_yaml::Value::String(s) => {
+                                                    serde_json::Value::String(s.clone())
+                                                }
+                                                serde_yaml::Value::Sequence(seq) => {
+                                                    serde_json::Value::Array(
+                                                        seq.iter().map(yaml_to_json).collect(),
+                                                    )
+                                                }
+                                                serde_yaml::Value::Mapping(map) => {
+                                                    let mut obj = serde_json::Map::new();
+                                                    for (k, v) in map {
+                                                        let key = match k {
+                                                            serde_yaml::Value::String(s) => {
+                                                                s.clone()
+                                                            }
+                                                            _ => serde_yaml::to_string(k)
+                                                                .unwrap_or_default(),
+                                                        };
+                                                        obj.insert(key, yaml_to_json(v));
+                                                    }
+                                                    serde_json::Value::Object(obj)
+                                                }
+                                                _ => serde_json::Value::Null,
+                                            }
+                                        }
+                                        let json_obj = serde_json::Value::Object(
+                                            map.iter()
+                                                .map(|(k, v)| (k.clone(), yaml_to_json(v)))
+                                                .collect(),
+                                        );
+                                        // Set Content-Type header if not present
+                                        if !headers
+                                            .iter()
+                                            .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+                                        {
+                                            headers.push((
+                                                "Content-Type".to_string(),
+                                                "application/json".to_string(),
+                                            ));
+                                        }
+                                        let json_str = serde_json::to_string(&json_obj)
+                                            .unwrap_or_else(|_| "{}".to_string());
+                                        (json_str, false)
+                                    }
+                                    Some(wave::collection::Body::Form(map)) => {
                                         let form_str = wave::http_client::Client::<
                                             wave::http_client::ReqwestBackend,
                                         >::prepare_form_body(
@@ -150,6 +176,16 @@ let (body, _is_form) = match &resolved.body {
                                                 .collect::<Vec<_>>(),
                                             &mut headers.clone(),
                                         );
+                                        // Set Content-Type header if not present
+                                        if !headers
+                                            .iter()
+                                            .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+                                        {
+                                            headers.push((
+                                                "Content-Type".to_string(),
+                                                "application/x-www-form-urlencoded".to_string(),
+                                            ));
+                                        }
                                         (form_str, true)
                                     }
                                     None => ("".to_string(), false),
@@ -182,4 +218,3 @@ let (body, _is_form) = match &resolved.body {
         Err(e) => eprintln!("Failed to load collection '{collection}': {e}"),
     }
 }
-

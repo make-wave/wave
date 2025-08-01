@@ -86,7 +86,6 @@ pub fn handle_get(url: &str, params: &[String], verbose: bool, spinner_msg: &str
 }
 
 pub fn handle_post(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
-
     let url = ensure_url_scheme(url);
     let (mut headers, data) = parse_params(params);
 
@@ -104,7 +103,6 @@ pub fn handle_post(url: &str, params: &[String], form: bool, verbose: bool, spin
 }
 
 pub fn handle_put(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
-
     let url = ensure_url_scheme(url);
     let (mut headers, data) = parse_params(params);
 
@@ -122,7 +120,6 @@ pub fn handle_put(url: &str, params: &[String], form: bool, verbose: bool, spinn
 }
 
 pub fn handle_patch(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
-
     let url = ensure_url_scheme(url);
     let (mut headers, data) = parse_params(params);
 
@@ -154,17 +151,41 @@ mod tests {
 
     #[test]
     fn test_parse_params_json_body() {
-        let params = vec!["name=joe".to_string(), "age=42".to_string(), "Authorization:Bearer123".to_string()];
+        let params = vec![
+            "name=joe".to_string(),
+            "age=42".to_string(),
+            "Authorization:Bearer123".to_string(),
+        ];
         let (headers, data) = parse_params(&params);
-        assert_eq!(headers, vec![("Authorization".to_string(), "Bearer123".to_string())]);
-        assert_eq!(data, vec![("name".to_string(), "joe".to_string()), ("age".to_string(), "42".to_string())]);
+        assert_eq!(
+            headers,
+            vec![("Authorization".to_string(), "Bearer123".to_string())]
+        );
+        assert_eq!(
+            data,
+            vec![
+                ("name".to_string(), "joe".to_string()),
+                ("age".to_string(), "42".to_string())
+            ]
+        );
     }
 
     #[test]
     fn test_parse_params_form_flag_ignored() {
-        let params = vec!["--form".to_string(), "foo=bar".to_string(), "baz=qux".to_string(), "X-Test:1".to_string()];
+        let params = vec![
+            "--form".to_string(),
+            "foo=bar".to_string(),
+            "baz=qux".to_string(),
+            "X-Test:1".to_string(),
+        ];
         let (headers, data) = parse_params(&params);
         assert_eq!(headers, vec![("X-Test".to_string(), "1".to_string())]);
-        assert_eq!(data, vec![("foo".to_string(), "bar".to_string()), ("baz".to_string(), "qux".to_string())]);
+        assert_eq!(
+            data,
+            vec![
+                ("foo".to_string(), "bar".to_string()),
+                ("baz".to_string(), "qux".to_string())
+            ]
+        );
     }
 }
