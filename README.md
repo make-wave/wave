@@ -1,6 +1,10 @@
-# wave
+<div align="center">
+  <img width="250" height="250" alt="wave" src="https://github.com/user-attachments/assets/6741625c-9333-4d7d-9b71-1d04dee61b9c" />
+  
+  # `wave`: an HTTP client for folks who like their terminal
+</div>
 
-wave is an HTTP client for folks who like their terminal. It provides a simple, scriptable alternative to GUI tools like Postman, making it easy to send HTTP requests, inspect responses, and automate API workflows directly from your shell. And it's written in Rust!
+`wave` provides a simple, scriptable alternative to GUI tools like Postman, making it easy to send HTTP requests, inspect responses, and automate API workflows directly from your shell. And it's written in Rust!
 
 ## Features
 - GET, POST, PUT, PATCH, DELETE methods
@@ -13,13 +17,13 @@ wave is an HTTP client for folks who like their terminal. It provides a simple, 
 
 ## Installation
 
-To install with homebrew:
+### To install with homebrew:
 ```sh
 brew tap make-wave/tap
 brew install make-wave/tap/wave
 ```
 
-To build from source:
+### To build from source:
 
 ```sh
 cargo install --path .
@@ -81,4 +85,6 @@ Run `wave --help` for full command-line options and usage details.
 
 ---
 
-For developer and AI agent documentation, see [AI_AGENT_GUIDE.md](./AI_AGENT_GUIDE.md).
+## Why build this? Doesn't it already exist?
+
+There are definitely other HTTP client CLIs and at least some of them are definitely very good. Look [httpie](https://github.com/httpie/cli), for example! I wanted one that would allow me to store collections in a plaintext format alongside sourcecode for web APIs so that they could be used for testing. Maybe another one already has that feature, but I didn't look very hard because I was excited about building my own.
