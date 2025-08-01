@@ -84,11 +84,11 @@ pub fn resolve_request_vars(
         Some(Body::Json(map)) => {
             let mut resolved = HashMap::new();
             for (k, v) in map {
-                let v_str = match v {
-                    serde_yaml::Value::String(s) => resolve_vars(s, file_vars)?,
-                    other => serde_yaml::to_string(other).unwrap_or_default(),
+                let resolved_value = match v {
+                    serde_yaml::Value::String(s) => serde_yaml::Value::String(resolve_vars(s, file_vars)?),
+                    other => other.clone(),
                 };
-                resolved.insert(k.clone(), serde_yaml::Value::String(v_str));
+                resolved.insert(k.clone(), resolved_value);
             }
             Some(Body::Json(resolved))
         }
