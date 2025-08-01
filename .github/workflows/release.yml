@@ -47,21 +47,7 @@ jobs:
           name: wave-macos-latest
           path: ./artifacts
 
-      # Generate release notes from commit messages since previous version tag
-      - name: Generate release notes
-        id: notes
-        run: |
-          git fetch --tags
-          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
-          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]' | grep -v "^${CURRENT_TAG}$" | tail -n 1)
-           if [ -z "$PREV_TAG" ]; then
-             NOTES=$(git log --pretty=format:"%s%n%b" --reverse | grep -v '^chore')
-           else
-             NOTES=$(git log $PREV_TAG..$CURRENT_TAG --pretty=format:"%s%n%b" --reverse | grep -v '^chore')
-           fi
-           echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
-           echo "$NOTES" >> $GITHUB_ENV
-           echo "EOF" >> $GITHUB_ENV
+
       # Create GitHub Release and upload binaries
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -69,6 +55,7 @@ jobs:
           files: |
             ./artifacts/wave-ubuntu-latest
             ./artifacts/wave-macos-latest
-          body: ${{ env.RELEASE_NOTES }}
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+ 
