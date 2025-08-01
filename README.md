@@ -13,6 +13,12 @@ wave is an HTTP client for folks who like their terminal. It provides a simple, 
 
 ## Installation
 
+To install with homebrew:
+```sh
+brew tap make-wave/tap
+brew install make-wave/tap/wave
+```
+
 To build from source:
 
 ```sh
