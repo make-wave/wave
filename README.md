@@ -30,18 +30,16 @@ cargo install --path .
 Basic request examples:
 
 ```sh
-wave get https://httpbin.org/get Authorization:Bearer123 Accept:application/json
-wave post https://httpbin.org/post Content-Type:application/json name=alice age=30
-wave put https://httpbin.org/put Authorization:BearerAnother foo=bar
+wave get https://httpbin.org/get 
+wave post https://httpbin.org/post name=alice age=30
+wave put https://httpbin.org/put --form Authorization:Bearer123 foo=bar
 wave patch https://httpbin.org/patch Accept:application/json update=true
 wave delete https://httpbin.org/delete X-Delete-Reason:cleanup
 ```
 
-- **Headers:** Use `key:value` syntax after the URL (e.g., `Authorization:Bearer123`).
-- **Body Data:** For POST/PUT/PATCH, use `key=value` syntax (e.g., `name=alice`). Body data defaults to JSON. Specify form data with `--form`.
-  - **Important:** If using `--form`, it must appear before any body data or headers (e.g., `wave post https://httpbin.org/post --form name=alice age=30`).
-  - If you place `--form` after any header or body param, wave will show an error and suggest the correct usage.
-- **Collections:** Save requests in YAML files in the `.wave` directory and run them by name: `wave my_collection my_request`
+- **Headers:** Use `key:value` syntax, e.g. `Authorization:Bearer123`
+- **Body Data:** Use `key=value` syntax, e.g. `name=alice`. Defaults to JSON. Specify form data with `--form`. The correct `Content-Type` header is applied automatically.
+- **Collections:** Save requests in YAML files in the `.wave` directory and run them by name. E.g. for a request called `my_request` in `.wave/my_collection.yml`: `wave my_collection my_request`
 
 ### Example Collection YAML
 
@@ -52,14 +50,14 @@ variables:
   user_id: 42
 
 requests:
-  - name: Get User Info
+  - name: get-user-info
     method: GET
     url: ${base_url}/users/${user_id}
     headers:
       Authorization: Bearer ${env:API_TOKEN}
       Accept: application/json
 
-  - name: Create User
+  - name: create-user
     method: POST
     url: ${base_url}/users
     headers:
@@ -74,8 +72,8 @@ requests:
 - Use `${varName}` to reference variables defined in the file.
 - Use `${env:VAR_NAME}` to reference environment variables.
 - Place your YAML files in the `.wave` directory, e.g., `.wave/example_api.yaml`.
-- Run a request with: `wave example_api "Get User Info"`
-- The collection name is always the filename (without `.yaml`), not a field in the file.
+- Run a request with: `wave example_api get-user-info`
+- The collection name is the file name (without the extension).
 
 ## Help
 

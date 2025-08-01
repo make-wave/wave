@@ -2,33 +2,33 @@
 variables:
   baseUrl: https://httpbin.org
 requests:
-  - name: testget
+  - name: test-get
     method: GET
     url: ${baseUrl}/get
-  - name: testpost
+  - name: test-post
     method: POST
     url: ${baseUrl}/post
     body:
       json:
         key: value
         foo: bar
-  - name: testform
+  - name: test-form
     method: POST
     url: ${baseUrl}/post
     body:
       form:
         key: value
         foo: bar
-  - name: testput
+  - name: test-put
     method: PUT
     url: ${baseUrl}/put
-  - name: testpatch
+  - name: test-patch
     method: PATCH
     url: ${baseUrl}/patch
-  - name: testdelete
+  - name: test-delete
     method: DELETE
     url: ${baseUrl}/delete
-  - name: testenvvar
+  - name: test-env
     method: GET
     url: ${baseUrl}/get
     headers:
