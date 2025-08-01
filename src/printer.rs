@@ -101,13 +101,27 @@ pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
 }
 
 pub fn print_response(result: Result<HttpResponse, Box<dyn std::error::Error>>, verbose: bool) {
+    let _ = print_response_to(&mut std::io::stdout(), result, verbose);
+}
+
+fn print_response_to<W: std::io::Write>(
+    writer: &mut W,
+    result: Result<HttpResponse, Box<dyn std::error::Error>>,
+    verbose: bool,
+) -> std::io::Result<()> {
     match result {
         Ok(resp) => {
-            print!("{}", format_response(&resp, verbose));
+            writeln!(writer, "{}", format_response(&resp, verbose))
         }
         Err(e) => {
             let style = Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Red)));
-            eprintln!("{}Error: {}{}", style.render(), e, anstyle::Reset.render());
+            writeln!(
+                writer,
+                "{}Error: {}{}",
+                style.render(),
+                e,
+                anstyle::Reset.render()
+            )
         }
     }
 }
@@ -208,5 +222,18 @@ mod tests {
         assert!(output.contains("application/json"));
         assert!(output.contains("X-Error: "));
         assert!(output.contains("Not Found"));
+    }
+
+    #[test]
+    fn test_print_response_to_writer_trailing_newline() {
+        let resp = HttpResponse {
+            status: 200,
+            headers: vec![],
+            body: "hello".to_string(),
+        };
+        let mut buf = Vec::new();
+        print_response_to(&mut buf, Ok(resp), false).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        assert!(output.ends_with('\n'));
     }
 }
