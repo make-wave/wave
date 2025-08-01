@@ -113,9 +113,10 @@ use indicatif::{ProgressBar, ProgressStyle};
 use printer::print_response;
 use std::time::Duration;
 
-pub fn run_with_spinner<F, T>(message: &str, f: F) -> T
+pub async fn run_with_spinner<F, Fut, T>(message: &str, f: F) -> T
 where
-    F: FnOnce() -> T,
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = T>,
 {
     let pb = ProgressBar::new_spinner();
     pb.set_message(message.to_string());
@@ -126,21 +127,26 @@ where
             .template("{spinner} {msg}")
             .unwrap(),
     );
-    let result = f();
+    let result = f().await;
     pb.finish_and_clear();
     result
 }
 
-pub fn handle_get(url: &str, params: &[String], verbose: bool, spinner_msg: &str) {
+pub async fn handle_get(url: &str, params: &[String], verbose: bool, spinner_msg: &str) {
     let url = ensure_url_scheme(url);
     let (headers, _) = parse_params(params);
     let client = Client::new(ReqwestBackend);
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let result = run_with_spinner(spinner_msg, || rt.block_on(client.get(&url, headers)));
+    let result = run_with_spinner(spinner_msg, || async { client.get(&url, headers).await }).await;
     print_response(result, verbose);
 }
 
-pub fn handle_post(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
+pub async fn handle_post(
+    url: &str,
+    params: &[String],
+    form: bool,
+    verbose: bool,
+    spinner_msg: &str,
+) {
     let url = ensure_url_scheme(url);
     let (mut headers, data) = parse_params(params);
 
@@ -150,14 +156,20 @@ pub fn handle_post(url: &str, params: &[String], form: bool, verbose: bool, spin
         Client::<ReqwestBackend>::prepare_json_body(data, &mut headers)
     };
     let client = Client::new(ReqwestBackend);
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let result = run_with_spinner(spinner_msg, || {
-        rt.block_on(client.post(&url, &body, headers))
-    });
+    let result = run_with_spinner(spinner_msg, || async {
+        client.post(&url, &body, headers).await
+    })
+    .await;
     print_response(result, verbose);
 }
 
-pub fn handle_put(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
+pub async fn handle_put(
+    url: &str,
+    params: &[String],
+    form: bool,
+    verbose: bool,
+    spinner_msg: &str,
+) {
     let url = ensure_url_scheme(url);
     let (mut headers, data) = parse_params(params);
 
@@ -167,14 +179,20 @@ pub fn handle_put(url: &str, params: &[String], form: bool, verbose: bool, spinn
         Client::<ReqwestBackend>::prepare_json_body(data, &mut headers)
     };
     let client = Client::new(ReqwestBackend);
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let result = run_with_spinner(spinner_msg, || {
-        rt.block_on(client.put(&url, &body, headers))
-    });
+    let result = run_with_spinner(spinner_msg, || async {
+        client.put(&url, &body, headers).await
+    })
+    .await;
     print_response(result, verbose);
 }
 
-pub fn handle_patch(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
+pub async fn handle_patch(
+    url: &str,
+    params: &[String],
+    form: bool,
+    verbose: bool,
+    spinner_msg: &str,
+) {
     let url = ensure_url_scheme(url);
     let (mut headers, data) = parse_params(params);
 
@@ -184,19 +202,19 @@ pub fn handle_patch(url: &str, params: &[String], form: bool, verbose: bool, spi
         Client::<ReqwestBackend>::prepare_json_body(data, &mut headers)
     };
     let client = Client::new(ReqwestBackend);
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let result = run_with_spinner(spinner_msg, || {
-        rt.block_on(client.patch(&url, &body, headers))
-    });
+    let result = run_with_spinner(spinner_msg, || async {
+        client.patch(&url, &body, headers).await
+    })
+    .await;
     print_response(result, verbose);
 }
 
-pub fn handle_delete(url: &str, params: &[String], verbose: bool, spinner_msg: &str) {
+pub async fn handle_delete(url: &str, params: &[String], verbose: bool, spinner_msg: &str) {
     let url = ensure_url_scheme(url);
     let (headers, _) = parse_params(params);
     let client = Client::new(ReqwestBackend);
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let result = run_with_spinner(spinner_msg, || rt.block_on(client.delete(&url, headers)));
+    let result =
+        run_with_spinner(spinner_msg, || async { client.delete(&url, headers).await }).await;
     print_response(result, verbose);
 }
 

@@ -1,8 +1,9 @@
 use clap::Parser;
 use wave::collection::{load_collection, resolve_request_vars};
-use wave::{handle_delete, handle_get, handle_patch, handle_post, handle_put, Cli};
+use wave::Cli;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
     use wave::Command;
     match cli.command {
@@ -17,7 +18,7 @@ fn main() {
                 if params.is_empty() { "" } else { " " },
                 params.join(" ")
             );
-            handle_get(&url, &params, verbose, &spinner_msg);
+            wave::handle_get(&url, &params, verbose, &spinner_msg).await;
         }
         Command::Post {
             url,
@@ -31,7 +32,7 @@ fn main() {
                 if params.is_empty() { "" } else { " " },
                 params.join(" ")
             );
-            handle_post(&url, &params, form, verbose, &spinner_msg);
+            wave::handle_post(&url, &params, form, verbose, &spinner_msg).await;
         }
         Command::Put {
             url,
@@ -45,7 +46,7 @@ fn main() {
                 if params.is_empty() { "" } else { " " },
                 params.join(" ")
             );
-            handle_put(&url, &params, form, verbose, &spinner_msg);
+            wave::handle_put(&url, &params, form, verbose, &spinner_msg).await;
         }
         Command::Patch {
             url,
@@ -59,7 +60,7 @@ fn main() {
                 if params.is_empty() { "" } else { " " },
                 params.join(" ")
             );
-            handle_patch(&url, &params, form, verbose, &spinner_msg);
+            wave::handle_patch(&url, &params, form, verbose, &spinner_msg).await;
         }
         Command::Delete {
             url,
@@ -72,7 +73,7 @@ fn main() {
                 if params.is_empty() { "" } else { " " },
                 params.join(" ")
             );
-            handle_delete(&url, &params, verbose, &spinner_msg);
+            wave::handle_delete(&url, &params, verbose, &spinner_msg).await;
         }
         Command::Collection {
             collection,
@@ -100,10 +101,11 @@ fn main() {
                                             .unwrap_or_default()
                                             .into_iter()
                                             .collect();
-                                        let rt = tokio::runtime::Runtime::new().unwrap();
-                                        let result = wave::run_with_spinner(&spinner_msg, || {
-                                            rt.block_on(client.get(&resolved.url, headers))
-                                        });
+                                        let result =
+                                            wave::run_with_spinner(&spinner_msg, || async {
+                                                client.get(&resolved.url, headers).await
+                                            })
+                                            .await;
                                         wave::printer::print_response(result, verbose);
                                     }
                                     "DELETE" => {
@@ -112,10 +114,11 @@ fn main() {
                                             .unwrap_or_default()
                                             .into_iter()
                                             .collect();
-                                        let rt = tokio::runtime::Runtime::new().unwrap();
-                                        let result = wave::run_with_spinner(&spinner_msg, || {
-                                            rt.block_on(client.delete(&resolved.url, headers))
-                                        });
+                                        let result =
+                                            wave::run_with_spinner(&spinner_msg, || async {
+                                                client.delete(&resolved.url, headers).await
+                                            })
+                                            .await;
                                         wave::printer::print_response(result, verbose);
                                     }
                                     "POST" | "PUT" | "PATCH" => {
@@ -216,29 +219,27 @@ fn main() {
                                             }
                                             None => ("".to_string(), false),
                                         };
-                                        let rt = tokio::runtime::Runtime::new().unwrap();
                                         let result = match method.as_str() {
-                                            "POST" => wave::run_with_spinner(&spinner_msg, || {
-                                                rt.block_on(client.post(
-                                                    &resolved.url,
-                                                    &body,
-                                                    headers,
-                                                ))
-                                            }),
-                                            "PUT" => wave::run_with_spinner(&spinner_msg, || {
-                                                rt.block_on(client.put(
-                                                    &resolved.url,
-                                                    &body,
-                                                    headers,
-                                                ))
-                                            }),
-                                            "PATCH" => wave::run_with_spinner(&spinner_msg, || {
-                                                rt.block_on(client.patch(
-                                                    &resolved.url,
-                                                    &body,
-                                                    headers,
-                                                ))
-                                            }),
+                                            "POST" => {
+                                                wave::run_with_spinner(&spinner_msg, || async {
+                                                    client.post(&resolved.url, &body, headers).await
+                                                })
+                                                .await
+                                            }
+                                            "PUT" => {
+                                                wave::run_with_spinner(&spinner_msg, || async {
+                                                    client.put(&resolved.url, &body, headers).await
+                                                })
+                                                .await
+                                            }
+                                            "PATCH" => {
+                                                wave::run_with_spinner(&spinner_msg, || async {
+                                                    client
+                                                        .patch(&resolved.url, &body, headers)
+                                                        .await
+                                                })
+                                                .await
+                                            }
                                             _ => unreachable!(),
                                         };
                                         wave::printer::print_response(result, verbose);
