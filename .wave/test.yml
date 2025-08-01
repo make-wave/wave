@@ -1,0 +1,35 @@
+---
+variables:
+  baseUrl: https://httpbin.org
+requests:
+  - name: testget
+    method: GET
+    url: ${baseUrl}/get
+  - name: testpost
+    method: POST
+    url: ${baseUrl}/post
+    body:
+      json:
+        key: value
+        foo: bar
+  - name: testform
+    method: POST
+    url: ${baseUrl}/post
+    body:
+      form:
+        key: value
+        foo: bar
+  - name: testput
+    method: PUT
+    url: ${baseUrl}/put
+  - name: testpatch
+    method: PATCH
+    url: ${baseUrl}/patch
+  - name: testdelete
+    method: DELETE
+    url: ${baseUrl}/delete
+  - name: testenvvar
+    method: GET
+    url: ${baseUrl}/get
+    headers:
+      x-api-key: ${env:apiKey}
