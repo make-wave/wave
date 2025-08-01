@@ -194,7 +194,6 @@ requests:
         name: Alice
         email: alice@example.com
 "#;
-        let path = "/tmp/test_wave_collection.yaml";
         env::set_var("TEST_TOKEN", "secret123");
         let mut path = std::env::temp_dir();
         path.push("test_wave_collection.yaml");
