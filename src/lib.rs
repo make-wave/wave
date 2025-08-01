@@ -9,7 +9,7 @@ use http_client::{Client, ReqwestBackend};
 #[command(name = "wave")]
 #[command(about = "A terminal-based HTTP client", long_about = None)]
 pub struct Cli {
-    /// HTTP method or collection name
+    /// HTTP method (uppercase, e.g., GET, POST) or collection name (filename or internal identifier)
     #[arg()]
     pub first: String,
     /// URL or request name
