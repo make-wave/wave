@@ -192,6 +192,117 @@ pub fn handle_delete(url: &str, params: &[String], verbose: bool, spinner_msg: &
     execute_request_with_spinner(&req, spinner_msg, verbose);
 }
 
+// Collection request handling
+fn prepare_collection_headers_and_body(
+    resolved: &collection::Request,
+) -> (Vec<(String, String)>, String, bool) {
+    let mut headers: Vec<(String, String)> = resolved
+        .headers
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    match &resolved.body {
+        Some(collection::Body::Json(map)) => {
+            let json_obj = serde_json::Value::Object(
+                map.iter()
+                    .map(|(k, v)| (k.clone(), collection::yaml_to_json(v)))
+                    .collect(),
+            );
+            if !headers
+                .iter()
+                .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            {
+                headers.push(("Content-Type".to_string(), "application/json".to_string()));
+            }
+            let json_str = serde_json::to_string(&json_obj).unwrap_or_else(|_| "{}".to_string());
+            (headers, json_str, false)
+        }
+        Some(collection::Body::Form(map)) => {
+            let mut header_map = http::HeaderMap::new();
+            let form_str = Client::<ReqwestBackend>::prepare_form_body(
+                &map.iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect::<Vec<_>>(),
+                &mut header_map,
+            );
+            // Convert HeaderMap back to Vec for compatibility
+            let form_headers: Vec<(String, String)> = header_map
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+                .collect();
+            headers.extend(form_headers);
+            (headers, form_str, true)
+        }
+        None => (headers, "".to_string(), false),
+    }
+}
+
+pub fn handle_collection(collection_name: &str, request_name: &str, verbose: bool) {
+    let yaml_path = format!(".wave/{collection_name}.yaml");
+    let yml_path = format!(".wave/{collection_name}.yml");
+    let coll_result = collection::load_collection(&yaml_path).or_else(|_| collection::load_collection(&yml_path));
+    
+    match coll_result {
+        Ok(coll) => {
+            let file_vars = coll.variables.unwrap_or_default();
+            match coll.requests.iter().find(|r| r.name == request_name) {
+                Some(req) => match collection::resolve_request_vars(req, &file_vars) {
+                    Ok(resolved) => {
+                        let spinner_msg = format!("{} {}", resolved.method, resolved.url);
+                        match resolved.method {
+                            HttpMethod::Get => {
+                                let headers: Vec<(String, String)> = resolved
+                                    .headers
+                                    .unwrap_or_default()
+                                    .into_iter()
+                                    .collect();
+                                let req = HttpRequest::new_with_headers(
+                                    &resolved.url,
+                                    HttpMethod::Get,
+                                    None,
+                                    headers,
+                                );
+                                execute_request_with_spinner(&req, &spinner_msg, verbose);
+                            }
+                            HttpMethod::Delete => {
+                                let headers: Vec<(String, String)> = resolved
+                                    .headers
+                                    .unwrap_or_default()
+                                    .into_iter()
+                                    .collect();
+                                let req = HttpRequest::new_with_headers(
+                                    &resolved.url,
+                                    HttpMethod::Delete,
+                                    None,
+                                    headers,
+                                );
+                                execute_request_with_spinner(&req, &spinner_msg, verbose);
+                            }
+                            HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch => {
+                                let (headers, body, _is_form) = prepare_collection_headers_and_body(&resolved);
+                                let req = HttpRequest::new_with_headers(
+                                    &resolved.url,
+                                    resolved.method.clone(),
+                                    Some(body),
+                                    headers,
+                                );
+                                execute_request_with_spinner(&req, &spinner_msg, verbose);
+                            }
+                            _ => eprintln!("Unsupported method: {}", resolved.method),
+                        }
+                    }
+                    Err(e) => eprintln!("Variable resolution error: {e}"),
+                },
+                None => {
+                    eprintln!("Request '{request_name}' not found in collection '{collection_name}'.");
+                }
+            }
+        }
+        Err(e) => eprintln!("Failed to load collection '{collection_name}': {e}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

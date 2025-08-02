@@ -1,6 +1,5 @@
 use clap::Parser;
-use wave::collection::{load_collection, resolve_request_vars, yaml_to_json};
-use wave::{handle_delete, handle_get, handle_patch, handle_post, handle_put, Cli};
+use wave::{handle_collection, handle_delete, handle_get, handle_patch, handle_post, handle_put, Cli};
 
 fn spinner_msg(method: &str, url: &str, params: &[String]) -> String {
     format!(
@@ -9,56 +8,6 @@ fn spinner_msg(method: &str, url: &str, params: &[String]) -> String {
         url,
         if params.is_empty() { "" } else { " " },
     )
-}
-
-fn prepare_headers_and_body(
-    resolved: &wave::collection::Request,
-) -> (Vec<(String, String)>, String, bool) {
-    let mut headers: Vec<(String, String)> = resolved
-        .headers
-        .clone()
-        .unwrap_or_default()
-        .into_iter()
-        .collect();
-    match &resolved.body {
-        Some(wave::collection::Body::Json(map)) => {
-            let json_obj = serde_json::Value::Object(
-                map.iter()
-                    .map(|(k, v)| (k.clone(), yaml_to_json(v)))
-                    .collect(),
-            );
-            if !headers
-                .iter()
-                .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
-            {
-                headers.push(("Content-Type".to_string(), "application/json".to_string()));
-            }
-            let json_str = serde_json::to_string(&json_obj).unwrap_or_else(|_| "{}".to_string());
-            (headers, json_str, false)
-        }
-        Some(wave::collection::Body::Form(map)) => {
-            let mut header_map = http::HeaderMap::new();
-            let form_str =
-                wave::http_client::Client::<wave::http_client::ReqwestBackend>::prepare_form_body(
-                    &map.iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect::<Vec<_>>(),
-                    &mut header_map,
-                );
-            // Convert HeaderMap back to Vec for compatibility
-            let form_headers: Vec<(String, String)> = header_map
-                .iter()
-                .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
-                .collect();
-            headers.extend(form_headers);
-            (headers, form_str, true)
-        }
-        None => (headers, "".to_string(), false),
-    }
-}
-
-fn send_request(req: &wave::http_client::HttpRequest, spinner_msg: &str, verbose: bool) {
-    wave::execute_request_with_spinner(req, spinner_msg, verbose);
 }
 
 fn main() {
@@ -113,73 +62,7 @@ fn main() {
             request,
             verbose,
         } => {
-            let yaml_path = format!(".wave/{collection}.yaml");
-            let yml_path = format!(".wave/{collection}.yml");
-            let coll_result = load_collection(&yaml_path).or_else(|_| load_collection(&yml_path));
-            match coll_result {
-                Ok(coll) => {
-                    let file_vars = coll.variables.unwrap_or_default();
-                    match coll.requests.iter().find(|r| r.name == request) {
-                        Some(req) => match resolve_request_vars(req, &file_vars) {
-                            Ok(resolved) => {
-                                let method = &resolved.method;
-                                let spinner_msg = format!("{} {}", method, resolved.url);
-                                match resolved.method {
-                                    wave::http_client::HttpMethod::Get => {
-                                        let headers: Vec<(String, String)> = resolved
-                                            .headers
-                                            .unwrap_or_default()
-                                            .into_iter()
-                                            .collect();
-                                        let req = wave::http_client::HttpRequest::new_with_headers(
-                                            &resolved.url,
-                                            wave::http_client::HttpMethod::Get,
-                                            None,
-                                            headers,
-                                        );
-                                        send_request(&req, &spinner_msg, verbose);
-                                    }
-                                    wave::http_client::HttpMethod::Delete => {
-                                        let headers: Vec<(String, String)> = resolved
-                                            .headers
-                                            .unwrap_or_default()
-                                            .into_iter()
-                                            .collect();
-                                        let req = wave::http_client::HttpRequest::new_with_headers(
-                                            &resolved.url,
-                                            wave::http_client::HttpMethod::Delete,
-                                            None,
-                                            headers,
-                                        );
-                                        send_request(&req, &spinner_msg, verbose);
-                                    }
-                                    wave::http_client::HttpMethod::Post
-                                    | wave::http_client::HttpMethod::Put
-                                    | wave::http_client::HttpMethod::Patch => {
-                                        let (headers, body, _is_form) =
-                                            prepare_headers_and_body(&resolved);
-                                        let req = wave::http_client::HttpRequest::new_with_headers(
-                                            &resolved.url,
-                                            resolved.method.clone(),
-                                            Some(body),
-                                            headers,
-                                        );
-                                        send_request(&req, &spinner_msg, verbose);
-                                    }
-                                    _ => eprintln!("Unsupported method: {method}"),
-                                }
-                            }
-                            Err(e) => eprintln!("Variable resolution error: {e}"),
-                        },
-                        None => {
-                            eprintln!(
-                                "Request '{request}' not found in collection '{collection}'."
-                            );
-                        }
-                    }
-                }
-                Err(e) => eprintln!("Failed to load collection '{collection}': {e}"),
-            }
+            handle_collection(&collection, &request, verbose);
         }
     }
 }
