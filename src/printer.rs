@@ -1,5 +1,6 @@
 use crate::http_client::{HttpResponse, HttpError};
 use anstyle::{AnsiColor, Style};
+use std::io::{self, Write};
 
 pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
     fn pretty_print_json_colored(value: &serde_json::Value) -> String {
@@ -96,14 +97,14 @@ pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
 }
 
 pub fn print_response(result: Result<HttpResponse, HttpError>, verbose: bool) {
-    let _ = print_response_to(&mut std::io::stdout(), result, verbose);
+    let _ = print_response_to(&mut io::stdout(), result, verbose);
 }
 
-fn print_response_to<W: std::io::Write>(
+fn print_response_to<W: Write>(
     writer: &mut W,
     result: Result<HttpResponse, HttpError>,
     verbose: bool,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     match result {
         Ok(resp) => {
             writeln!(writer, "{}", format_response(&resp, verbose))

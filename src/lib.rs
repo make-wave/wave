@@ -4,6 +4,7 @@ pub mod printer;
 
 use clap::{Parser, Subcommand};
 use http_client::{Client, ReqwestBackend, HttpRequest, HttpMethod, RequestBody};
+use std::collections::HashMap;
 
 #[derive(Subcommand)]
 pub enum Command {
@@ -153,7 +154,7 @@ pub fn handle_post(url: &str, params: &[String], form: bool, verbose: bool, spin
         let body = RequestBody::form(data);
         HttpRequest::with_body_from_headers(&url, HttpMethod::Post, Some(body), headers)
     } else {
-        match RequestBody::json(&data.into_iter().collect::<std::collections::HashMap<String, String>>()) {
+        match RequestBody::json(&data.into_iter().collect::<HashMap<String, String>>()) {
             Ok(body) => HttpRequest::with_body_from_headers(&url, HttpMethod::Post, Some(body), headers),
             Err(_) => HttpRequest::new_with_headers(&url, HttpMethod::Post, Some("{}".to_string()), headers)
         }
@@ -174,7 +175,7 @@ pub fn handle_put(url: &str, params: &[String], form: bool, verbose: bool, spinn
         let body = RequestBody::form(data);
         HttpRequest::with_body_from_headers(&url, HttpMethod::Put, Some(body), headers)
     } else {
-        match RequestBody::json(&data.into_iter().collect::<std::collections::HashMap<String, String>>()) {
+        match RequestBody::json(&data.into_iter().collect::<HashMap<String, String>>()) {
             Ok(body) => HttpRequest::with_body_from_headers(&url, HttpMethod::Put, Some(body), headers),
             Err(_) => HttpRequest::new_with_headers(&url, HttpMethod::Put, Some("{}".to_string()), headers)
         }
@@ -195,7 +196,7 @@ pub fn handle_patch(url: &str, params: &[String], form: bool, verbose: bool, spi
         let body = RequestBody::form(data);
         HttpRequest::with_body_from_headers(&url, HttpMethod::Patch, Some(body), headers)
     } else {
-        match RequestBody::json(&data.into_iter().collect::<std::collections::HashMap<String, String>>()) {
+        match RequestBody::json(&data.into_iter().collect::<HashMap<String, String>>()) {
             Ok(body) => HttpRequest::with_body_from_headers(&url, HttpMethod::Patch, Some(body), headers),
             Err(_) => HttpRequest::new_with_headers(&url, HttpMethod::Patch, Some("{}".to_string()), headers)
         }

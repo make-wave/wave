@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use http::HeaderMap;
 use std::fmt;
 use std::str::FromStr;
+use std::collections::HashMap;
 
 /// HTTP methods supported by the client
 #[derive(Debug, Clone, PartialEq)]
@@ -452,7 +453,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         data: Vec<(String, String)>,
         headers: &mut HeaderMap,
     ) -> String {
-        let map: std::collections::HashMap<String, String> = data.into_iter().collect();
+        let map: HashMap<String, String> = data.into_iter().collect();
         match RequestBody::json(&map) {
             Ok(body) => body.serialize(headers),
             Err(_) => {
@@ -526,9 +527,10 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use tokio_test::block_on;
+    use std::sync::{Arc, Mutex};
 
     struct MockBackend {
-        pub last_request: std::sync::Mutex<Option<HttpRequest>>,
+        pub last_request: Mutex<Option<HttpRequest>>,
         pub response: HttpResponse,
         pub error: Option<HttpError>,
     }
@@ -555,7 +557,7 @@ mod tests {
     // the client has made a request. Without this, tests could only check the response, not verify that the client
     // constructed and sent the correct request (URL, method, headers, body).
     #[async_trait]
-    impl HttpBackend for std::sync::Arc<MockBackend> {
+    impl HttpBackend for Arc<MockBackend> {
         async fn send(
             &self,
             req: &HttpRequest,
@@ -597,8 +599,6 @@ mod tests {
 
     #[test]
     fn test_http_method_standard_from_str_trait() {
-        use std::str::FromStr;
-        
         // Test that FromStr trait works as expected
         assert_eq!(HttpMethod::from_str("GET").unwrap(), HttpMethod::Get);
         assert_eq!(HttpMethod::from_str("post").unwrap(), HttpMethod::Post);
@@ -661,8 +661,8 @@ mod tests {
         let mut expected_headers = HeaderMap::new();
         expected_headers.insert("x-resp", "ok".parse().unwrap());
         
-        let backend = std::sync::Arc::new(MockBackend {
-            last_request: std::sync::Mutex::new(None),
+        let backend = Arc::new(MockBackend {
+            last_request: Mutex::new(None),
             response: HttpResponse {
                 status: 200,
                 headers: expected_headers,
@@ -684,8 +684,8 @@ mod tests {
 
     #[test]
     fn test_client_post_calls_backend_and_returns_response() {
-        let backend = std::sync::Arc::new(MockBackend {
-            last_request: std::sync::Mutex::new(None),
+        let backend = Arc::new(MockBackend {
+            last_request: Mutex::new(None),
             response: HttpResponse {
                 status: 201,
                 headers: HeaderMap::new(),
@@ -769,8 +769,8 @@ mod tests {
 
     #[test]
     fn test_client_send() {
-        let backend = std::sync::Arc::new(MockBackend {
-            last_request: std::sync::Mutex::new(None),
+        let backend = Arc::new(MockBackend {
+            last_request: Mutex::new(None),
             response: HttpResponse {
                 status: 200,
                 headers: HeaderMap::new(),
@@ -791,8 +791,8 @@ mod tests {
 
     #[test]
     fn test_client_handles_backend_error() {
-        let backend = std::sync::Arc::new(MockBackend {
-            last_request: std::sync::Mutex::new(None),
+        let backend = Arc::new(MockBackend {
+            last_request: Mutex::new(None),
             response: HttpResponse {
                 status: 500,
                 headers: HeaderMap::new(),

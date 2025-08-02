@@ -1,8 +1,9 @@
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::fmt;
+use std::fs;
 use crate::http_client::HttpMethod;
 use serde::de::{self, Deserializer, MapAccess, Visitor};
-use std::fmt;
 
 #[derive(Debug, Deserialize)]
 pub struct Collection {
@@ -105,7 +106,7 @@ impl<'de> Deserialize<'de> for Body {
 
 /// Load collection and parse yaml collection
 pub fn load_collection(path: &str) -> Result<Collection, Box<dyn std::error::Error>> {
-    let content = std::fs::read_to_string(path)?;
+    let content = fs::read_to_string(path)?;
     let coll: Collection = serde_yaml::from_str(&content)?;
     Ok(coll)
 }
