@@ -43,9 +43,9 @@ pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
             output.push_str(&format!(
                 "{}{}: {}{}{}\n",
                 key_style.render(),
-                name,
+                name.as_str(),
                 value_style.render(),
-                value,
+                value.to_str().unwrap_or("<invalid header value>"),
                 anstyle::Reset.render()
             ));
         }
@@ -59,9 +59,9 @@ pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
             output.push_str(&format!(
                 "{}{}: {}{}{}\n",
                 key_style.render(),
-                name,
+                name.as_str(),
                 value_style.render(),
-                value,
+                value.to_str().unwrap_or("<invalid header value>"),
                 anstyle::Reset.render()
             ));
         }
@@ -69,17 +69,12 @@ pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
     }
     // Show Content-Type if not JSON and not already shown
     if !is_json && !showed_headers {
-        if let Some((name, value)) = resp
-            .headers
-            .iter()
-            .find(|(n, _)| n.eq_ignore_ascii_case("content-type"))
-        {
+        if let Some(value) = resp.headers.get("content-type") {
             output.push_str(&format!(
-                "{}{}: {}{}{}\n",
+                "{}Content-Type: {}{}{}\n",
                 key_style.render(),
-                name,
                 value_style.render(),
-                value,
+                value.to_str().unwrap_or("<invalid header value>"),
                 anstyle::Reset.render()
             ));
         }
@@ -129,11 +124,13 @@ fn print_response_to<W: std::io::Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use http::HeaderMap;
+    
     #[test]
     fn test_format_status_color_2xx() {
         let resp = HttpResponse {
             status: 200,
-            headers: vec![],
+            headers: HeaderMap::new(),
             body: "{}".to_string(),
         };
         let output = format_response(&resp, false);
@@ -150,7 +147,7 @@ mod tests {
     fn test_format_status_color_4xx() {
         let resp = HttpResponse {
             status: 404,
-            headers: vec![],
+            headers: HeaderMap::new(),
             body: "{}".to_string(),
         };
         let output = format_response(&resp, false);
@@ -168,7 +165,7 @@ mod tests {
         let body = r#"{\"foo\":1,\"bar\":{\"baz\":2}}"#;
         let resp = HttpResponse {
             status: 200,
-            headers: vec![],
+            headers: HeaderMap::new(),
             body: body.to_string(),
         };
         let output = format_response(&resp, false);
@@ -182,21 +179,27 @@ mod tests {
 
     #[test]
     fn test_format_headers_verbose() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", "application/json".parse().unwrap());
+        
         let resp = HttpResponse {
             status: 200,
-            headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+            headers,
             body: "{}".to_string(),
         };
         let output = format_response(&resp, true);
-        assert!(output.contains("Content-Type: "));
+        assert!(output.contains("content-type: "));
         assert!(output.contains("application/json"));
     }
 
     #[test]
     fn test_format_content_type_if_not_json() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", "text/html".parse().unwrap());
+        
         let resp = HttpResponse {
             status: 200,
-            headers: vec![("Content-Type".to_string(), "text/html".to_string())],
+            headers,
             body: "<html></html>".to_string(),
         };
         let output = format_response(&resp, false);
@@ -207,18 +210,19 @@ mod tests {
 
     #[test]
     fn test_format_headers_on_error_status() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", "application/json".parse().unwrap());
+        headers.insert("x-error", "Not Found".parse().unwrap());
+        
         let resp = HttpResponse {
             status: 404,
-            headers: vec![
-                ("Content-Type".to_string(), "application/json".to_string()),
-                ("X-Error".to_string(), "Not Found".to_string()),
-            ],
+            headers,
             body: "{}".to_string(),
         };
         let output = format_response(&resp, false);
-        assert!(output.contains("Content-Type: "));
+        assert!(output.contains("content-type: "));
         assert!(output.contains("application/json"));
-        assert!(output.contains("X-Error: "));
+        assert!(output.contains("x-error: "));
         assert!(output.contains("Not Found"));
     }
 
@@ -226,7 +230,7 @@ mod tests {
     fn test_print_response_to_writer_trailing_newline() {
         let resp = HttpResponse {
             status: 200,
-            headers: vec![],
+            headers: HeaderMap::new(),
             body: "hello".to_string(),
         };
         let mut buf = Vec::new();

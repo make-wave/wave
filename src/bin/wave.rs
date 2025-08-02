@@ -70,22 +70,20 @@ fn prepare_headers_and_body(
             (headers, json_str, false)
         }
         Some(wave::collection::Body::Form(map)) => {
+            let mut header_map = http::HeaderMap::new();
             let form_str =
                 wave::http_client::Client::<wave::http_client::ReqwestBackend>::prepare_form_body(
                     &map.iter()
                         .map(|(k, v)| (k.clone(), v.clone()))
                         .collect::<Vec<_>>(),
-                    &mut headers.clone(),
+                    &mut header_map,
                 );
-            if !headers
+            // Convert HeaderMap back to Vec for compatibility
+            let form_headers: Vec<(String, String)> = header_map
                 .iter()
-                .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
-            {
-                headers.push((
-                    "Content-Type".to_string(),
-                    "application/x-www-form-urlencoded".to_string(),
-                ));
-            }
+                .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+                .collect();
+            headers.extend(form_headers);
             (headers, form_str, true)
         }
         None => (headers, "".to_string(), false),
@@ -178,7 +176,7 @@ fn main() {
                                             .unwrap_or_default()
                                             .into_iter()
                                             .collect();
-                                        let req = wave::http_client::HttpRequest::new(&resolved.url, wave::http_client::HttpMethod::Get, None, headers);
+                                        let req = wave::http_client::HttpRequest::new_with_headers(&resolved.url, wave::http_client::HttpMethod::Get, None, headers);
                                         run_with_spinner_and_print(&spinner_msg, verbose, || send_request(&client, &req));
                                     }
                                     wave::http_client::HttpMethod::Delete => {
@@ -187,12 +185,12 @@ fn main() {
                                             .unwrap_or_default()
                                             .into_iter()
                                             .collect();
-                                        let req = wave::http_client::HttpRequest::new(&resolved.url, wave::http_client::HttpMethod::Delete, None, headers);
+                                        let req = wave::http_client::HttpRequest::new_with_headers(&resolved.url, wave::http_client::HttpMethod::Delete, None, headers);
                                         run_with_spinner_and_print(&spinner_msg, verbose, || send_request(&client, &req));
                                     }
                                     wave::http_client::HttpMethod::Post | wave::http_client::HttpMethod::Put | wave::http_client::HttpMethod::Patch => {
                                         let (headers, body, _is_form) = prepare_headers_and_body(&resolved);
-                                        let req = wave::http_client::HttpRequest::new(&resolved.url, resolved.method.clone(), Some(body), headers);
+                                        let req = wave::http_client::HttpRequest::new_with_headers(&resolved.url, resolved.method.clone(), Some(body), headers);
                                         run_with_spinner_and_print(&spinner_msg, verbose, || send_request(&client, &req));
                                     }
                                     _ => eprintln!("Unsupported method: {method}"),

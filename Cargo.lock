@@ -1561,6 +1561,7 @@ dependencies = [
  "async-trait",
  "clap",
  "colored_json",
+ "http",
  "indicatif",
  "reqwest",
  "serde",

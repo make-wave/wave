@@ -137,7 +137,7 @@ pub fn handle_get(url: &str, params: &[String], verbose: bool, spinner_msg: &str
     let client = Client::new(ReqwestBackend);
     let rt = tokio::runtime::Runtime::new().unwrap();
     
-    let req = HttpRequest::new(&url, HttpMethod::Get, None, headers);
+    let req = HttpRequest::new_with_headers(&url, HttpMethod::Get, None, headers);
     let result = run_with_spinner(spinner_msg, || rt.block_on(client.send(&req)));
     print_response(result, verbose);
 }
@@ -151,11 +151,11 @@ pub fn handle_post(url: &str, params: &[String], form: bool, verbose: bool, spin
     
     let req = if form {
         let body = RequestBody::form(data);
-        HttpRequest::with_body(&url, HttpMethod::Post, Some(body), headers)
+        HttpRequest::with_body_from_headers(&url, HttpMethod::Post, Some(body), headers)
     } else {
         match RequestBody::json(&data.into_iter().collect::<std::collections::HashMap<String, String>>()) {
-            Ok(body) => HttpRequest::with_body(&url, HttpMethod::Post, Some(body), headers),
-            Err(_) => HttpRequest::new(&url, HttpMethod::Post, Some("{}".to_string()), headers)
+            Ok(body) => HttpRequest::with_body_from_headers(&url, HttpMethod::Post, Some(body), headers),
+            Err(_) => HttpRequest::new_with_headers(&url, HttpMethod::Post, Some("{}".to_string()), headers)
         }
     };
     
@@ -172,11 +172,11 @@ pub fn handle_put(url: &str, params: &[String], form: bool, verbose: bool, spinn
     
     let req = if form {
         let body = RequestBody::form(data);
-        HttpRequest::with_body(&url, HttpMethod::Put, Some(body), headers)
+        HttpRequest::with_body_from_headers(&url, HttpMethod::Put, Some(body), headers)
     } else {
         match RequestBody::json(&data.into_iter().collect::<std::collections::HashMap<String, String>>()) {
-            Ok(body) => HttpRequest::with_body(&url, HttpMethod::Put, Some(body), headers),
-            Err(_) => HttpRequest::new(&url, HttpMethod::Put, Some("{}".to_string()), headers)
+            Ok(body) => HttpRequest::with_body_from_headers(&url, HttpMethod::Put, Some(body), headers),
+            Err(_) => HttpRequest::new_with_headers(&url, HttpMethod::Put, Some("{}".to_string()), headers)
         }
     };
     
@@ -193,11 +193,11 @@ pub fn handle_patch(url: &str, params: &[String], form: bool, verbose: bool, spi
     
     let req = if form {
         let body = RequestBody::form(data);
-        HttpRequest::with_body(&url, HttpMethod::Patch, Some(body), headers)
+        HttpRequest::with_body_from_headers(&url, HttpMethod::Patch, Some(body), headers)
     } else {
         match RequestBody::json(&data.into_iter().collect::<std::collections::HashMap<String, String>>()) {
-            Ok(body) => HttpRequest::with_body(&url, HttpMethod::Patch, Some(body), headers),
-            Err(_) => HttpRequest::new(&url, HttpMethod::Patch, Some("{}".to_string()), headers)
+            Ok(body) => HttpRequest::with_body_from_headers(&url, HttpMethod::Patch, Some(body), headers),
+            Err(_) => HttpRequest::new_with_headers(&url, HttpMethod::Patch, Some("{}".to_string()), headers)
         }
     };
     
@@ -211,7 +211,7 @@ pub fn handle_delete(url: &str, params: &[String], verbose: bool, spinner_msg: &
     let client = Client::new(ReqwestBackend);
     let rt = tokio::runtime::Runtime::new().unwrap();
     
-    let req = HttpRequest::new(&url, HttpMethod::Delete, None, headers);
+    let req = HttpRequest::new_with_headers(&url, HttpMethod::Delete, None, headers);
     let result = run_with_spinner(spinner_msg, || rt.block_on(client.send(&req)));
     print_response(result, verbose);
 }

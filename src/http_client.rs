@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use http::HeaderMap;
 use std::fmt;
 
 /// HTTP methods supported by the client
@@ -101,7 +102,7 @@ impl RequestBody {
     }
     
     /// Serialize the body to a string and set appropriate Content-Type header
-    pub fn serialize(&self, headers: &mut Vec<(String, String)>) -> String {
+    pub fn serialize(&self, headers: &mut HeaderMap) -> String {
         match self {
             RequestBody::Json(value) => {
                 Self::ensure_content_type(headers, "application/json");
@@ -126,12 +127,9 @@ impl RequestBody {
     }
     
     /// Ensure Content-Type header is set if not already present
-    pub(crate) fn ensure_content_type(headers: &mut Vec<(String, String)>, content_type: &str) {
-        if !headers
-            .iter()
-            .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
-        {
-            headers.push(("Content-Type".to_string(), content_type.to_string()));
+    pub(crate) fn ensure_content_type(headers: &mut HeaderMap, content_type: &str) {
+        if !headers.contains_key("content-type") {
+            headers.insert("content-type", content_type.parse().unwrap());
         }
     }
 }
@@ -141,7 +139,7 @@ impl RequestBody {
 pub struct RequestBuilder {
     url: String,
     method: HttpMethod,
-    headers: Vec<(String, String)>,
+    headers: HeaderMap,
     body: Option<RequestBody>,
 }
 
@@ -151,20 +149,34 @@ impl RequestBuilder {
         Self {
             url: url.into(),
             method,
-            headers: Vec::new(),
+            headers: HeaderMap::new(),
             body: None,
         }
     }
     
     /// Add a header to the request
     pub fn header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.headers.push((key.into(), value.into()));
+        let key_str = key.into();
+        let value_str = value.into();
+        if let (Ok(header_name), Ok(header_value)) = (key_str.parse::<http::HeaderName>(), value_str.parse::<http::HeaderValue>()) {
+            self.headers.insert(header_name, header_value);
+        }
         self
     }
     
     /// Add multiple headers to the request
-    pub fn headers(mut self, headers: Vec<(String, String)>) -> Self {
+    pub fn headers(mut self, headers: HeaderMap) -> Self {
         self.headers.extend(headers);
+        self
+    }
+    
+    /// Add multiple headers from Vec (convenience method for backward compatibility)
+    pub fn headers_from_vec(mut self, headers: Vec<(String, String)>) -> Self {
+        for (key, value) in headers {
+            if let (Ok(header_name), Ok(header_value)) = (key.parse::<http::HeaderName>(), value.parse::<http::HeaderValue>()) {
+                self.headers.insert(header_name, header_value);
+            }
+        }
         self
     }
     
@@ -216,7 +228,7 @@ impl RequestBuilder {
 #[derive(Clone, Debug, PartialEq)]
 pub struct HttpResponse {
     pub status: u16,
-    pub headers: Vec<(String, String)>,
+    pub headers: HeaderMap,
     pub body: String,
 }
 
@@ -226,16 +238,16 @@ pub struct HttpRequest {
     pub url: String,
     pub method: HttpMethod,
     pub body: Option<String>,
-    pub headers: Vec<(String, String)>,
+    pub headers: HeaderMap,
 }
 
 impl HttpRequest {
-    /// Constructs a new HttpRequest (existing API for backward compatibility).
+    /// Constructs a new HttpRequest with HeaderMap
     pub fn new(
         url: &str,
         method: HttpMethod,
         body: Option<String>,
-        headers: Vec<(String, String)>,
+        headers: HeaderMap,
     ) -> Self {
         Self {
             url: url.to_string(),
@@ -245,12 +257,34 @@ impl HttpRequest {
         }
     }
     
+    /// Constructs a new HttpRequest from Vec<(String, String)> (convenience method for backward compatibility)
+    pub fn new_with_headers(
+        url: &str,
+        method: HttpMethod,
+        body: Option<String>,
+        headers: Vec<(String, String)>,
+    ) -> Self {
+        let mut header_map = HeaderMap::new();
+        for (key, value) in headers {
+            if let (Ok(header_name), Ok(header_value)) = (key.parse::<http::HeaderName>(), value.parse::<http::HeaderValue>()) {
+                header_map.insert(header_name, header_value);
+            }
+        }
+        
+        Self {
+            url: url.to_string(),
+            method,
+            body,
+            headers: header_map,
+        }
+    }
+    
     /// Constructs a new HttpRequest with a RequestBody that handles serialization
     pub fn with_body(
         url: &str,
         method: HttpMethod,
         body: Option<RequestBody>,
-        headers: Vec<(String, String)>,
+        headers: HeaderMap,
     ) -> Self {
         let mut headers = headers;
         let body_string = body.map(|b| b.serialize(&mut headers));
@@ -261,6 +295,23 @@ impl HttpRequest {
             body: body_string,
             headers,
         }
+    }
+    
+    /// Constructs a new HttpRequest with RequestBody from Vec<(String, String)> (convenience method)
+    pub fn with_body_from_headers(
+        url: &str,
+        method: HttpMethod,
+        body: Option<RequestBody>,
+        headers: Vec<(String, String)>,
+    ) -> Self {
+        let mut header_map = HeaderMap::new();
+        for (key, value) in headers {
+            if let (Ok(header_name), Ok(header_value)) = (key.parse::<http::HeaderName>(), value.parse::<http::HeaderValue>()) {
+                header_map.insert(header_name, header_value);
+            }
+        }
+        
+        Self::with_body(url, method, body, header_map)
     }
     
     /// Create a request builder for complex requests
@@ -296,21 +347,15 @@ impl HttpBackend for ReqwestBackend {
         }
         // Set headers
         for (key, value) in &req.headers {
-            request_builder = request_builder.header(key, value);
+            request_builder = request_builder.header(key.as_str(), value.to_str().unwrap_or(""));
         }
         let resp = request_builder.send().await
             .map_err(|e| HttpError::Network(e.to_string()))?;
         let status = resp.status().as_u16();
-        let headers = resp
-            .headers()
-            .iter()
-            .map(|(k, v)| {
-                let value_str = v.to_str()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|_| format!("{:?}", v.as_bytes()));
-                (k.to_string(), value_str)
-            })
-            .collect();
+        let mut headers = HeaderMap::new();
+        for (k, v) in resp.headers() {
+            headers.insert(k.clone(), v.clone());
+        }
         let body = resp.text().await
             .map_err(|e| HttpError::Parse(e.to_string()))?;
         Ok(HttpResponse {
@@ -345,7 +390,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
     /// DEPRECATED: Use RequestBody::form() instead
     pub fn prepare_form_body(
         data: &[(String, String)],
-        headers: &mut Vec<(String, String)>,
+        headers: &mut HeaderMap,
     ) -> String {
         let body = RequestBody::form(data.to_vec());
         body.serialize(headers)
@@ -355,7 +400,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
     /// DEPRECATED: Use RequestBody::json() instead
     pub fn prepare_json_body(
         data: Vec<(String, String)>,
-        headers: &mut Vec<(String, String)>,
+        headers: &mut HeaderMap,
     ) -> String {
         let map: std::collections::HashMap<String, String> = data.into_iter().collect();
         match RequestBody::json(&map) {
@@ -374,7 +419,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         url: &str,
         headers: Vec<(String, String)>,
     ) -> Result<HttpResponse, HttpError> {
-        let req = HttpRequest::new(url, HttpMethod::Get, None, headers);
+        let req = HttpRequest::new_with_headers(url, HttpMethod::Get, None, headers);
         self.send(&req).await
     }
     
@@ -386,7 +431,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         body: &str,
         headers: Vec<(String, String)>,
     ) -> Result<HttpResponse, HttpError> {
-        let req = HttpRequest::new(url, HttpMethod::Post, Some(body.to_string()), headers);
+        let req = HttpRequest::new_with_headers(url, HttpMethod::Post, Some(body.to_string()), headers);
         self.send(&req).await
     }
     
@@ -398,7 +443,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         body: &str,
         headers: Vec<(String, String)>,
     ) -> Result<HttpResponse, HttpError> {
-        let req = HttpRequest::new(url, HttpMethod::Put, Some(body.to_string()), headers);
+        let req = HttpRequest::new_with_headers(url, HttpMethod::Put, Some(body.to_string()), headers);
         self.send(&req).await
     }
     
@@ -409,7 +454,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         url: &str,
         headers: Vec<(String, String)>,
     ) -> Result<HttpResponse, HttpError> {
-        let req = HttpRequest::new(url, HttpMethod::Delete, None, headers);
+        let req = HttpRequest::new_with_headers(url, HttpMethod::Delete, None, headers);
         self.send(&req).await
     }
     
@@ -421,7 +466,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         body: &str,
         headers: Vec<(String, String)>,
     ) -> Result<HttpResponse, HttpError> {
-        let req = HttpRequest::new(url, HttpMethod::Patch, Some(body.to_string()), headers);
+        let req = HttpRequest::new_with_headers(url, HttpMethod::Patch, Some(body.to_string()), headers);
         self.send(&req).await
     }
 }
@@ -471,16 +516,19 @@ mod tests {
 
     #[test]
     fn test_http_request_construction() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-test", "1".parse().unwrap());
+        
         let req = HttpRequest::new(
             "http://example.com",
             HttpMethod::Post,
             Some("body".to_string()),
-            vec![("X-Test".to_string(), "1".to_string())],
+            headers.clone(),
         );
         assert_eq!(req.url, "http://example.com");
         assert_eq!(req.method, HttpMethod::Post);
         assert_eq!(req.body, Some("body".to_string()));
-        assert_eq!(req.headers, vec![("X-Test".to_string(), "1".to_string())]);
+        assert_eq!(req.headers, headers);
     }
 
     #[test]
@@ -510,21 +558,20 @@ mod tests {
 
     #[test]
     fn test_prepare_form_body_sets_header_and_encodes() {
-        let mut headers = vec![];
+        let mut headers = HeaderMap::new();
         let data = vec![
             ("foo".to_string(), "bar baz".to_string()),
             ("qux".to_string(), "1&2".to_string()),
         ];
         let encoded = Client::<MockBackend>::prepare_form_body(&data, &mut headers);
         assert_eq!(encoded, "foo=bar%20baz&qux=1%262");
-        assert!(headers
-            .iter()
-            .any(|(k, v)| k == "Content-Type" && v == "application/x-www-form-urlencoded"));
+        assert!(headers.contains_key("content-type"));
+        assert_eq!(headers.get("content-type").unwrap(), "application/x-www-form-urlencoded");
     }
 
     #[test]
     fn test_prepare_json_body_sets_header_and_encodes() {
-        let mut headers = vec![];
+        let mut headers = HeaderMap::new();
         let data = vec![
             ("foo".to_string(), "bar".to_string()),
             ("baz".to_string(), "qux".to_string()),
@@ -533,18 +580,20 @@ mod tests {
         let encoded_json: serde_json::Value = serde_json::from_str(&encoded).unwrap();
         let expected_json: serde_json::Value = serde_json::json!({"foo": "bar", "baz": "qux"});
         assert_eq!(encoded_json, expected_json);
-        assert!(headers
-            .iter()
-            .any(|(k, v)| k == "Content-Type" && v == "application/json"));
+        assert!(headers.contains_key("content-type"));
+        assert_eq!(headers.get("content-type").unwrap(), "application/json");
     }
 
     #[test]
     fn test_client_get_calls_backend_and_returns_response() {
+        let mut expected_headers = HeaderMap::new();
+        expected_headers.insert("x-resp", "ok".parse().unwrap());
+        
         let backend = std::sync::Arc::new(MockBackend {
             last_request: std::sync::Mutex::new(None),
             response: HttpResponse {
                 status: 200,
-                headers: vec![("X-Resp".to_string(), "ok".to_string())],
+                headers: expected_headers,
                 body: "hello".to_string(),
             },
             error: None,
@@ -558,7 +607,7 @@ mod tests {
         let req = backend.last_request.lock().unwrap().clone().unwrap();
         assert_eq!(req.url, "http://test");
         assert_eq!(req.method, HttpMethod::Get);
-        assert_eq!(req.headers, vec![("X-Req".to_string(), "1".to_string())]);
+        assert_eq!(req.headers.get("x-req").unwrap(), "1");
     }
 
     #[test]
@@ -567,7 +616,7 @@ mod tests {
             last_request: std::sync::Mutex::new(None),
             response: HttpResponse {
                 status: 201,
-                headers: vec![],
+                headers: HeaderMap::new(),
                 body: "created".to_string(),
             },
             error: None,
@@ -585,10 +634,11 @@ mod tests {
     fn test_request_body_json() {
         let data = serde_json::json!({"name": "Alice", "age": 30});
         let body = RequestBody::json(&data).unwrap();
-        let mut headers = vec![];
+        let mut headers = HeaderMap::new();
         let serialized = body.serialize(&mut headers);
         
-        assert!(headers.iter().any(|(k, v)| k == "Content-Type" && v == "application/json"));
+        assert!(headers.contains_key("content-type"));
+        assert_eq!(headers.get("content-type").unwrap(), "application/json");
         let parsed: serde_json::Value = serde_json::from_str(&serialized).unwrap();
         assert_eq!(parsed["name"], "Alice");
         assert_eq!(parsed["age"], 30);
@@ -598,20 +648,22 @@ mod tests {
     fn test_request_body_form() {
         let data = vec![("name".to_string(), "Alice".to_string()), ("age".to_string(), "30".to_string())];
         let body = RequestBody::form(data);
-        let mut headers = vec![];
+        let mut headers = HeaderMap::new();
         let serialized = body.serialize(&mut headers);
         
-        assert!(headers.iter().any(|(k, v)| k == "Content-Type" && v == "application/x-www-form-urlencoded"));
+        assert!(headers.contains_key("content-type"));
+        assert_eq!(headers.get("content-type").unwrap(), "application/x-www-form-urlencoded");
         assert_eq!(serialized, "name=Alice&age=30");
     }
 
     #[test]
     fn test_request_body_text() {
         let body = RequestBody::text("Hello, World!".to_string());
-        let mut headers = vec![];
+        let mut headers = HeaderMap::new();
         let serialized = body.serialize(&mut headers);
         
-        assert!(headers.iter().any(|(k, v)| k == "Content-Type" && v == "text/plain"));
+        assert!(headers.contains_key("content-type"));
+        assert_eq!(headers.get("content-type").unwrap(), "text/plain");
         assert_eq!(serialized, "Hello, World!");
     }
 
@@ -626,8 +678,8 @@ mod tests {
         
         assert_eq!(req.url, "https://example.com");
         assert_eq!(req.method, HttpMethod::Post);
-        assert!(req.headers.iter().any(|(k, v)| k == "Authorization" && v == "Bearer token"));
-        assert!(req.headers.iter().any(|(k, v)| k == "Content-Type" && v == "application/json"));
+        assert_eq!(req.headers.get("authorization").unwrap(), "Bearer token");
+        assert_eq!(req.headers.get("content-type").unwrap(), "application/json");
         assert!(req.body.is_some());
     }
 
@@ -635,11 +687,11 @@ mod tests {
     fn test_http_request_with_body() {
         let data = vec![("key".to_string(), "value".to_string())];
         let body = RequestBody::form(data);
-        let req = HttpRequest::with_body("https://example.com", HttpMethod::Post, Some(body), vec![]);
+        let req = HttpRequest::with_body_from_headers("https://example.com", HttpMethod::Post, Some(body), vec![]);
         
         assert_eq!(req.url, "https://example.com");
         assert_eq!(req.method, HttpMethod::Post);
-        assert!(req.headers.iter().any(|(k, v)| k == "Content-Type" && v == "application/x-www-form-urlencoded"));
+        assert_eq!(req.headers.get("content-type").unwrap(), "application/x-www-form-urlencoded");
         assert_eq!(req.body, Some("key=value".to_string()));
     }
 
@@ -649,13 +701,13 @@ mod tests {
             last_request: std::sync::Mutex::new(None),
             response: HttpResponse {
                 status: 200,
-                headers: vec![],
+                headers: HeaderMap::new(),
                 body: "success".to_string(),
             },
             error: None,
         });
         let client = Client::new(backend.clone());
-        let req = HttpRequest::new("http://test", HttpMethod::Get, None, vec![]);
+        let req = HttpRequest::new_with_headers("http://test", HttpMethod::Get, None, vec![]);
         let resp = block_on(client.send(&req)).unwrap();
         
         assert_eq!(resp.status, 200);
@@ -671,7 +723,7 @@ mod tests {
             last_request: std::sync::Mutex::new(None),
             response: HttpResponse {
                 status: 500,
-                headers: vec![],
+                headers: HeaderMap::new(),
                 body: "fail".to_string(),
             },
             error: Some(HttpError::Network("mock error".to_string())),
