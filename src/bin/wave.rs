@@ -164,10 +164,10 @@ fn main() {
                                 let client = wave::http_client::Client::new(
                                     wave::http_client::ReqwestBackend,
                                 );
-                                let method = resolved.method.to_uppercase();
+                                let method = &resolved.method;
                                 let spinner_msg = format!("{} {}", method, resolved.url);
-                                match method.as_str() {
-                                    "GET" => {
+                                match resolved.method {
+                                    wave::http_client::HttpMethod::Get => {
                                         let headers: Vec<(String, String)> = resolved
                                             .headers
                                             .unwrap_or_default()
@@ -179,7 +179,7 @@ fn main() {
                                         });
                                         wave::printer::print_response(result, verbose);
                                     }
-                                    "DELETE" => {
+                                    wave::http_client::HttpMethod::Delete => {
                                         let headers: Vec<(String, String)> = resolved
                                             .headers
                                             .unwrap_or_default()
@@ -191,12 +191,12 @@ fn main() {
                                         });
                                         wave::printer::print_response(result, verbose);
                                     }
-                                    "POST" | "PUT" | "PATCH" => {
+                                    wave::http_client::HttpMethod::Post | wave::http_client::HttpMethod::Put | wave::http_client::HttpMethod::Patch => {
                                         let (headers, body, _is_form) =
                                             prepare_headers_and_body(&resolved);
                                         let rt = tokio::runtime::Runtime::new().unwrap();
-                                        match method.as_str() {
-                                            "POST" => run_with_spinner_and_print(
+                                        match resolved.method {
+                                            wave::http_client::HttpMethod::Post => run_with_spinner_and_print(
                                                 &spinner_msg,
                                                 verbose,
                                                 || {
@@ -207,7 +207,7 @@ fn main() {
                                                     ))
                                                 },
                                             ),
-                                            "PUT" => run_with_spinner_and_print(
+                                            wave::http_client::HttpMethod::Put => run_with_spinner_and_print(
                                                 &spinner_msg,
                                                 verbose,
                                                 || {
@@ -218,7 +218,7 @@ fn main() {
                                                     ))
                                                 },
                                             ),
-                                            "PATCH" => run_with_spinner_and_print(
+                                            wave::http_client::HttpMethod::Patch => run_with_spinner_and_print(
                                                 &spinner_msg,
                                                 verbose,
                                                 || {

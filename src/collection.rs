@@ -1,5 +1,8 @@
 use serde::Deserialize;
 use std::collections::HashMap;
+use crate::http_client::HttpMethod;
+use serde::de::{self, Deserializer, MapAccess, Visitor};
+use std::fmt;
 
 #[derive(Debug, Deserialize)]
 pub struct Collection {
@@ -7,17 +10,42 @@ pub struct Collection {
     pub requests: Vec<Request>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub struct Request {
     pub name: String,
-    pub method: String,
+    pub method: HttpMethod,
     pub url: String,
     pub headers: Option<HashMap<String, String>>,
     pub body: Option<Body>, // Body is now validated for mutual exclusivity
 }
 
-use serde::de::{self, Deserializer, MapAccess, Visitor};
-use std::fmt;
+impl<'de> Deserialize<'de> for Request {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RequestHelper {
+            name: String,
+            method: String,
+            url: String,
+            headers: Option<HashMap<String, String>>,
+            body: Option<Body>,
+        }
+
+        let helper = RequestHelper::deserialize(deserializer)?;
+        let method = HttpMethod::from_str(&helper.method)
+            .map_err(|e| de::Error::custom(format!("Invalid HTTP method: {}", e)))?;
+
+        Ok(Request {
+            name: helper.name,
+            method,
+            url: helper.url,
+            headers: helper.headers,
+            body: helper.body,
+        })
+    }
+}
 
 #[derive(Debug)]
 pub enum Body {

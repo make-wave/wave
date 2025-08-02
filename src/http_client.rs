@@ -1,6 +1,47 @@
 use async_trait::async_trait;
 use std::fmt;
 
+/// HTTP methods supported by the client
+#[derive(Debug, Clone, PartialEq)]
+pub enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Delete,
+    Patch,
+    Head,
+    Options,
+}
+
+impl fmt::Display for HttpMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HttpMethod::Get => write!(f, "GET"),
+            HttpMethod::Post => write!(f, "POST"),
+            HttpMethod::Put => write!(f, "PUT"),
+            HttpMethod::Delete => write!(f, "DELETE"),
+            HttpMethod::Patch => write!(f, "PATCH"),
+            HttpMethod::Head => write!(f, "HEAD"),
+            HttpMethod::Options => write!(f, "OPTIONS"),
+        }
+    }
+}
+
+impl HttpMethod {
+    pub fn from_str(s: &str) -> Result<Self, HttpError> {
+        match s.to_uppercase().as_str() {
+            "GET" => Ok(HttpMethod::Get),
+            "POST" => Ok(HttpMethod::Post),
+            "PUT" => Ok(HttpMethod::Put),
+            "DELETE" => Ok(HttpMethod::Delete),
+            "PATCH" => Ok(HttpMethod::Patch),
+            "HEAD" => Ok(HttpMethod::Head),
+            "OPTIONS" => Ok(HttpMethod::Options),
+            _ => Err(HttpError::UnsupportedMethod(s.to_string())),
+        }
+    }
+}
+
 /// Custom error types for HTTP operations
 #[derive(Debug, Clone)]
 pub enum HttpError {
@@ -39,7 +80,7 @@ pub struct HttpResponse {
 #[derive(Debug, PartialEq, Clone)]
 pub struct HttpRequest {
     pub url: String,
-    pub method: String,
+    pub method: HttpMethod,
     pub body: Option<String>,
     pub headers: Vec<(String, String)>,
 }
@@ -48,13 +89,13 @@ impl HttpRequest {
     /// Constructs a new HttpRequest.
     pub fn new(
         url: &str,
-        method: &str,
+        method: HttpMethod,
         body: Option<String>,
         headers: Vec<(String, String)>,
     ) -> Self {
         Self {
             url: url.to_string(),
-            method: method.to_string(),
+            method,
             body,
             headers,
         }
@@ -74,13 +115,14 @@ pub struct ReqwestBackend;
 impl HttpBackend for ReqwestBackend {
     async fn send(&self, req: &HttpRequest) -> Result<HttpResponse, HttpError> {
         let client = reqwest::Client::new();
-        let mut request_builder = match req.method.as_str() {
-            "GET" => client.get(&req.url),
-            "POST" => client.post(&req.url),
-            "PUT" => client.put(&req.url),
-            "DELETE" => client.delete(&req.url),
-            "PATCH" => client.patch(&req.url),
-            _ => return Err(HttpError::UnsupportedMethod(req.method.clone())),
+        let mut request_builder = match req.method {
+            HttpMethod::Get => client.get(&req.url),
+            HttpMethod::Post => client.post(&req.url),
+            HttpMethod::Put => client.put(&req.url),
+            HttpMethod::Delete => client.delete(&req.url),
+            HttpMethod::Patch => client.patch(&req.url),
+            HttpMethod::Head => client.head(&req.url),
+            HttpMethod::Options => client.request(reqwest::Method::OPTIONS, &req.url),
         };
         if let Some(ref body) = req.body {
             request_builder = request_builder.body(body.clone());
@@ -166,7 +208,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         url: &str,
         headers: Vec<(String, String)>,
     ) -> Result<HttpResponse, HttpError> {
-        let req = HttpRequest::new(url, "GET", None, headers);
+        let req = HttpRequest::new(url, HttpMethod::Get, None, headers);
         self.backend.send(&req).await
     }
     /// Sends a POST request.
@@ -176,7 +218,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         body: &str,
         headers: Vec<(String, String)>,
     ) -> Result<HttpResponse, HttpError> {
-        let req = HttpRequest::new(url, "POST", Some(body.to_string()), headers);
+        let req = HttpRequest::new(url, HttpMethod::Post, Some(body.to_string()), headers);
         self.backend.send(&req).await
     }
     /// Sends a PUT request.
@@ -186,7 +228,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         body: &str,
         headers: Vec<(String, String)>,
     ) -> Result<HttpResponse, HttpError> {
-        let req = HttpRequest::new(url, "PUT", Some(body.to_string()), headers);
+        let req = HttpRequest::new(url, HttpMethod::Put, Some(body.to_string()), headers);
         self.backend.send(&req).await
     }
     /// Sends a DELETE request.
@@ -195,7 +237,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         url: &str,
         headers: Vec<(String, String)>,
     ) -> Result<HttpResponse, HttpError> {
-        let req = HttpRequest::new(url, "DELETE", None, headers);
+        let req = HttpRequest::new(url, HttpMethod::Delete, None, headers);
         self.backend.send(&req).await
     }
     /// Sends a PATCH request.
@@ -205,7 +247,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         body: &str,
         headers: Vec<(String, String)>,
     ) -> Result<HttpResponse, HttpError> {
-        let req = HttpRequest::new(url, "PATCH", Some(body.to_string()), headers);
+        let req = HttpRequest::new(url, HttpMethod::Patch, Some(body.to_string()), headers);
         self.backend.send(&req).await
     }
 }
@@ -257,14 +299,39 @@ mod tests {
     fn test_http_request_construction() {
         let req = HttpRequest::new(
             "http://example.com",
-            "POST",
+            HttpMethod::Post,
             Some("body".to_string()),
             vec![("X-Test".to_string(), "1".to_string())],
         );
         assert_eq!(req.url, "http://example.com");
-        assert_eq!(req.method, "POST");
+        assert_eq!(req.method, HttpMethod::Post);
         assert_eq!(req.body, Some("body".to_string()));
         assert_eq!(req.headers, vec![("X-Test".to_string(), "1".to_string())]);
+    }
+
+    #[test]
+    fn test_http_method_from_str() {
+        assert_eq!(HttpMethod::from_str("GET").unwrap(), HttpMethod::Get);
+        assert_eq!(HttpMethod::from_str("get").unwrap(), HttpMethod::Get);
+        assert_eq!(HttpMethod::from_str("POST").unwrap(), HttpMethod::Post);
+        assert_eq!(HttpMethod::from_str("put").unwrap(), HttpMethod::Put);
+        assert_eq!(HttpMethod::from_str("DELETE").unwrap(), HttpMethod::Delete);
+        assert_eq!(HttpMethod::from_str("patch").unwrap(), HttpMethod::Patch);
+        assert_eq!(HttpMethod::from_str("HEAD").unwrap(), HttpMethod::Head);
+        assert_eq!(HttpMethod::from_str("options").unwrap(), HttpMethod::Options);
+        
+        assert!(matches!(HttpMethod::from_str("INVALID"), Err(HttpError::UnsupportedMethod(_))));
+    }
+
+    #[test]
+    fn test_http_method_display() {
+        assert_eq!(format!("{}", HttpMethod::Get), "GET");
+        assert_eq!(format!("{}", HttpMethod::Post), "POST");
+        assert_eq!(format!("{}", HttpMethod::Put), "PUT");
+        assert_eq!(format!("{}", HttpMethod::Delete), "DELETE");
+        assert_eq!(format!("{}", HttpMethod::Patch), "PATCH");
+        assert_eq!(format!("{}", HttpMethod::Head), "HEAD");
+        assert_eq!(format!("{}", HttpMethod::Options), "OPTIONS");
     }
 
     #[test]
@@ -316,7 +383,7 @@ mod tests {
         assert_eq!(resp.body, "hello");
         let req = backend.last_request.lock().unwrap().clone().unwrap();
         assert_eq!(req.url, "http://test");
-        assert_eq!(req.method, "GET");
+        assert_eq!(req.method, HttpMethod::Get);
         assert_eq!(req.headers, vec![("X-Req".to_string(), "1".to_string())]);
     }
 
@@ -336,7 +403,7 @@ mod tests {
         assert_eq!(resp.status, 201);
         assert_eq!(resp.body, "created");
         let req = backend.last_request.lock().unwrap().clone().unwrap();
-        assert_eq!(req.method, "POST");
+        assert_eq!(req.method, HttpMethod::Post);
         assert_eq!(req.body, Some("payload".to_string()));
     }
 
