@@ -100,6 +100,11 @@ where
     wave::printer::print_response(result, verbose);
 }
 
+fn send_request(client: &wave::http_client::Client<wave::http_client::ReqwestBackend>, req: &wave::http_client::HttpRequest) -> Result<wave::http_client::HttpResponse, wave::http_client::HttpError> {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(client.send(req))
+}
+
 fn main() {
     let cli = Cli::parse();
     use wave::Command;
@@ -173,11 +178,8 @@ fn main() {
                                             .unwrap_or_default()
                                             .into_iter()
                                             .collect();
-                                        let rt = tokio::runtime::Runtime::new().unwrap();
-                                        let result = wave::run_with_spinner(&spinner_msg, || {
-                                            rt.block_on(client.get(&resolved.url, headers))
-                                        });
-                                        wave::printer::print_response(result, verbose);
+                                        let req = wave::http_client::HttpRequest::new(&resolved.url, wave::http_client::HttpMethod::Get, None, headers);
+                                        run_with_spinner_and_print(&spinner_msg, verbose, || send_request(&client, &req));
                                     }
                                     wave::http_client::HttpMethod::Delete => {
                                         let headers: Vec<(String, String)> = resolved
@@ -185,52 +187,13 @@ fn main() {
                                             .unwrap_or_default()
                                             .into_iter()
                                             .collect();
-                                        let rt = tokio::runtime::Runtime::new().unwrap();
-                                        let result = wave::run_with_spinner(&spinner_msg, || {
-                                            rt.block_on(client.delete(&resolved.url, headers))
-                                        });
-                                        wave::printer::print_response(result, verbose);
+                                        let req = wave::http_client::HttpRequest::new(&resolved.url, wave::http_client::HttpMethod::Delete, None, headers);
+                                        run_with_spinner_and_print(&spinner_msg, verbose, || send_request(&client, &req));
                                     }
                                     wave::http_client::HttpMethod::Post | wave::http_client::HttpMethod::Put | wave::http_client::HttpMethod::Patch => {
-                                        let (headers, body, _is_form) =
-                                            prepare_headers_and_body(&resolved);
-                                        let rt = tokio::runtime::Runtime::new().unwrap();
-                                        match resolved.method {
-                                            wave::http_client::HttpMethod::Post => run_with_spinner_and_print(
-                                                &spinner_msg,
-                                                verbose,
-                                                || {
-                                                    rt.block_on(client.post(
-                                                        &resolved.url,
-                                                        &body,
-                                                        headers,
-                                                    ))
-                                                },
-                                            ),
-                                            wave::http_client::HttpMethod::Put => run_with_spinner_and_print(
-                                                &spinner_msg,
-                                                verbose,
-                                                || {
-                                                    rt.block_on(client.put(
-                                                        &resolved.url,
-                                                        &body,
-                                                        headers,
-                                                    ))
-                                                },
-                                            ),
-                                            wave::http_client::HttpMethod::Patch => run_with_spinner_and_print(
-                                                &spinner_msg,
-                                                verbose,
-                                                || {
-                                                    rt.block_on(client.patch(
-                                                        &resolved.url,
-                                                        &body,
-                                                        headers,
-                                                    ))
-                                                },
-                                            ),
-                                            _ => unreachable!(),
-                                        }
+                                        let (headers, body, _is_form) = prepare_headers_and_body(&resolved);
+                                        let req = wave::http_client::HttpRequest::new(&resolved.url, resolved.method.clone(), Some(body), headers);
+                                        run_with_spinner_and_print(&spinner_msg, verbose, || send_request(&client, &req));
                                     }
                                     _ => eprintln!("Unsupported method: {method}"),
                                 }
