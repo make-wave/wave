@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use http::HeaderMap;
 use std::fmt;
+use std::str::FromStr;
 
 /// HTTP methods supported by the client
 #[derive(Debug, Clone, PartialEq)]
@@ -28,8 +29,10 @@ impl fmt::Display for HttpMethod {
     }
 }
 
-impl HttpMethod {
-    pub fn from_str(s: &str) -> Result<Self, HttpError> {
+impl FromStr for HttpMethod {
+    type Err = HttpError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_uppercase().as_str() {
             "GET" => Ok(HttpMethod::Get),
             "POST" => Ok(HttpMethod::Post),
@@ -230,6 +233,53 @@ pub struct HttpResponse {
     pub status: u16,
     pub headers: HeaderMap,
     pub body: String,
+}
+
+impl HttpResponse {
+    /// Returns true if the response status indicates success (2xx)
+    pub fn is_success(&self) -> bool {
+        self.status >= 200 && self.status < 300
+    }
+    
+    /// Returns true if the response status indicates a client error (4xx)
+    pub fn is_client_error(&self) -> bool {
+        self.status >= 400 && self.status < 500
+    }
+    
+    /// Returns true if the response status indicates a server error (5xx)
+    pub fn is_server_error(&self) -> bool {
+        self.status >= 500 && self.status < 600
+    }
+    
+    /// Returns true if the response status indicates any error (4xx or 5xx)
+    pub fn is_error(&self) -> bool {
+        self.status >= 400
+    }
+    
+    /// Returns the Content-Type header value, if present
+    pub fn content_type(&self) -> Option<&str> {
+        self.headers
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+    }
+    
+    /// Parse the response body as JSON
+    pub fn json<T: serde::de::DeserializeOwned>(&self) -> Result<T, HttpError> {
+        serde_json::from_str(&self.body)
+            .map_err(|e| HttpError::Parse(format!("Failed to parse JSON response: {}", e)))
+    }
+    
+    /// Get the response body as a string reference
+    pub fn text(&self) -> &str {
+        &self.body
+    }
+    
+    /// Returns true if the response body appears to be JSON based on Content-Type header
+    pub fn is_json(&self) -> bool {
+        self.content_type()
+            .map(|ct| ct.contains("application/json") || ct.contains("text/json"))
+            .unwrap_or(false)
+    }
 }
 
 /// Represents an HTTP request.
@@ -533,16 +583,38 @@ mod tests {
 
     #[test]
     fn test_http_method_from_str() {
-        assert_eq!(HttpMethod::from_str("GET").unwrap(), HttpMethod::Get);
-        assert_eq!(HttpMethod::from_str("get").unwrap(), HttpMethod::Get);
-        assert_eq!(HttpMethod::from_str("POST").unwrap(), HttpMethod::Post);
-        assert_eq!(HttpMethod::from_str("put").unwrap(), HttpMethod::Put);
-        assert_eq!(HttpMethod::from_str("DELETE").unwrap(), HttpMethod::Delete);
-        assert_eq!(HttpMethod::from_str("patch").unwrap(), HttpMethod::Patch);
-        assert_eq!(HttpMethod::from_str("HEAD").unwrap(), HttpMethod::Head);
-        assert_eq!(HttpMethod::from_str("options").unwrap(), HttpMethod::Options);
+        assert_eq!("GET".parse::<HttpMethod>().unwrap(), HttpMethod::Get);
+        assert_eq!("get".parse::<HttpMethod>().unwrap(), HttpMethod::Get);
+        assert_eq!("POST".parse::<HttpMethod>().unwrap(), HttpMethod::Post);
+        assert_eq!("put".parse::<HttpMethod>().unwrap(), HttpMethod::Put);
+        assert_eq!("DELETE".parse::<HttpMethod>().unwrap(), HttpMethod::Delete);
+        assert_eq!("patch".parse::<HttpMethod>().unwrap(), HttpMethod::Patch);
+        assert_eq!("HEAD".parse::<HttpMethod>().unwrap(), HttpMethod::Head);
+        assert_eq!("options".parse::<HttpMethod>().unwrap(), HttpMethod::Options);
         
-        assert!(matches!(HttpMethod::from_str("INVALID"), Err(HttpError::UnsupportedMethod(_))));
+        assert!(matches!("INVALID".parse::<HttpMethod>(), Err(HttpError::UnsupportedMethod(_))));
+    }
+
+    #[test]
+    fn test_http_method_standard_from_str_trait() {
+        use std::str::FromStr;
+        
+        // Test that FromStr trait works as expected
+        assert_eq!(HttpMethod::from_str("GET").unwrap(), HttpMethod::Get);
+        assert_eq!(HttpMethod::from_str("post").unwrap(), HttpMethod::Post);
+        
+        // Test error handling
+        let result = HttpMethod::from_str("INVALID");
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), HttpError::UnsupportedMethod(_)));
+        
+        // Test that we can use it in generic contexts
+        fn parse_method<T: FromStr>(s: &str) -> Result<T, T::Err> {
+            s.parse()
+        }
+        
+        let method: HttpMethod = parse_method("PUT").unwrap();
+        assert_eq!(method, HttpMethod::Put);
     }
 
     #[test]
@@ -734,5 +806,287 @@ mod tests {
         assert_eq!(format!("{err}"), "Network error: mock error");
         let req = backend.last_request.lock().unwrap().clone().unwrap();
         assert_eq!(req.url, "http://fail");
+    }
+
+    // Tests for HttpResponse convenience methods
+    #[test]
+    fn test_response_is_success() {
+        let resp_200 = HttpResponse {
+            status: 200,
+            headers: HeaderMap::new(),
+            body: "OK".to_string(),
+        };
+        let resp_201 = HttpResponse {
+            status: 201,
+            headers: HeaderMap::new(),
+            body: "Created".to_string(),
+        };
+        let resp_299 = HttpResponse {
+            status: 299,
+            headers: HeaderMap::new(),
+            body: "Custom success".to_string(),
+        };
+        let resp_300 = HttpResponse {
+            status: 300,
+            headers: HeaderMap::new(),
+            body: "Redirect".to_string(),
+        };
+        let resp_404 = HttpResponse {
+            status: 404,
+            headers: HeaderMap::new(),
+            body: "Not found".to_string(),
+        };
+
+        assert!(resp_200.is_success());
+        assert!(resp_201.is_success());
+        assert!(resp_299.is_success());
+        assert!(!resp_300.is_success());
+        assert!(!resp_404.is_success());
+    }
+
+    #[test]
+    fn test_response_is_client_error() {
+        let resp_200 = HttpResponse {
+            status: 200,
+            headers: HeaderMap::new(),
+            body: "OK".to_string(),
+        };
+        let resp_399 = HttpResponse {
+            status: 399,
+            headers: HeaderMap::new(),
+            body: "Custom redirect".to_string(),
+        };
+        let resp_400 = HttpResponse {
+            status: 400,
+            headers: HeaderMap::new(),
+            body: "Bad request".to_string(),
+        };
+        let resp_404 = HttpResponse {
+            status: 404,
+            headers: HeaderMap::new(),
+            body: "Not found".to_string(),
+        };
+        let resp_499 = HttpResponse {
+            status: 499,
+            headers: HeaderMap::new(),
+            body: "Custom client error".to_string(),
+        };
+        let resp_500 = HttpResponse {
+            status: 500,
+            headers: HeaderMap::new(),
+            body: "Server error".to_string(),
+        };
+
+        assert!(!resp_200.is_client_error());
+        assert!(!resp_399.is_client_error());
+        assert!(resp_400.is_client_error());
+        assert!(resp_404.is_client_error());
+        assert!(resp_499.is_client_error());
+        assert!(!resp_500.is_client_error());
+    }
+
+    #[test]
+    fn test_response_is_server_error() {
+        let resp_404 = HttpResponse {
+            status: 404,
+            headers: HeaderMap::new(),
+            body: "Not found".to_string(),
+        };
+        let resp_499 = HttpResponse {
+            status: 499,
+            headers: HeaderMap::new(),
+            body: "Custom client error".to_string(),
+        };
+        let resp_500 = HttpResponse {
+            status: 500,
+            headers: HeaderMap::new(),
+            body: "Internal server error".to_string(),
+        };
+        let resp_502 = HttpResponse {
+            status: 502,
+            headers: HeaderMap::new(),
+            body: "Bad gateway".to_string(),
+        };
+        let resp_599 = HttpResponse {
+            status: 599,
+            headers: HeaderMap::new(),
+            body: "Custom server error".to_string(),
+        };
+        let resp_600 = HttpResponse {
+            status: 600,
+            headers: HeaderMap::new(),
+            body: "Custom status".to_string(),
+        };
+
+        assert!(!resp_404.is_server_error());
+        assert!(!resp_499.is_server_error());
+        assert!(resp_500.is_server_error());
+        assert!(resp_502.is_server_error());
+        assert!(resp_599.is_server_error());
+        assert!(!resp_600.is_server_error());
+    }
+
+    #[test]
+    fn test_response_is_error() {
+        let resp_200 = HttpResponse {
+            status: 200,
+            headers: HeaderMap::new(),
+            body: "OK".to_string(),
+        };
+        let resp_399 = HttpResponse {
+            status: 399,
+            headers: HeaderMap::new(),
+            body: "Custom redirect".to_string(),
+        };
+        let resp_400 = HttpResponse {
+            status: 400,
+            headers: HeaderMap::new(),
+            body: "Bad request".to_string(),
+        };
+        let resp_500 = HttpResponse {
+            status: 500,
+            headers: HeaderMap::new(),
+            body: "Server error".to_string(),
+        };
+
+        assert!(!resp_200.is_error());
+        assert!(!resp_399.is_error());
+        assert!(resp_400.is_error());
+        assert!(resp_500.is_error());
+    }
+
+    #[test]
+    fn test_response_content_type() {
+        let mut headers_json = HeaderMap::new();
+        headers_json.insert("content-type", "application/json; charset=utf-8".parse().unwrap());
+        
+        let mut headers_html = HeaderMap::new();
+        headers_html.insert("content-type", "text/html".parse().unwrap());
+        
+        let resp_json = HttpResponse {
+            status: 200,
+            headers: headers_json,
+            body: "{}".to_string(),
+        };
+        let resp_html = HttpResponse {
+            status: 200,
+            headers: headers_html,
+            body: "<html></html>".to_string(),
+        };
+        let resp_no_header = HttpResponse {
+            status: 200,
+            headers: HeaderMap::new(),
+            body: "plain text".to_string(),
+        };
+
+        assert_eq!(resp_json.content_type(), Some("application/json; charset=utf-8"));
+        assert_eq!(resp_html.content_type(), Some("text/html"));
+        assert_eq!(resp_no_header.content_type(), None);
+    }
+
+    #[test]
+    fn test_response_is_json() {
+        let mut headers_json = HeaderMap::new();
+        headers_json.insert("content-type", "application/json".parse().unwrap());
+        
+        let mut headers_json_charset = HeaderMap::new();
+        headers_json_charset.insert("content-type", "application/json; charset=utf-8".parse().unwrap());
+        
+        let mut headers_text_json = HeaderMap::new();
+        headers_text_json.insert("content-type", "text/json".parse().unwrap());
+        
+        let mut headers_html = HeaderMap::new();
+        headers_html.insert("content-type", "text/html".parse().unwrap());
+        
+        let resp_json = HttpResponse {
+            status: 200,
+            headers: headers_json,
+            body: "{}".to_string(),
+        };
+        let resp_json_charset = HttpResponse {
+            status: 200,
+            headers: headers_json_charset,
+            body: "{}".to_string(),
+        };
+        let resp_text_json = HttpResponse {
+            status: 200,
+            headers: headers_text_json,
+            body: "{}".to_string(),
+        };
+        let resp_html = HttpResponse {
+            status: 200,
+            headers: headers_html,
+            body: "<html></html>".to_string(),
+        };
+        let resp_no_header = HttpResponse {
+            status: 200,
+            headers: HeaderMap::new(),
+            body: "{}".to_string(),
+        };
+
+        assert!(resp_json.is_json());
+        assert!(resp_json_charset.is_json());
+        assert!(resp_text_json.is_json());
+        assert!(!resp_html.is_json());
+        assert!(!resp_no_header.is_json());
+    }
+
+    #[test]
+    fn test_response_json_parsing() {
+        use serde::Deserialize;
+        
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct TestData {
+            name: String,
+            age: u32,
+        }
+        
+        let resp_valid_json = HttpResponse {
+            status: 200,
+            headers: HeaderMap::new(),
+            body: r#"{"name": "Alice", "age": 30}"#.to_string(),
+        };
+        let resp_invalid_json = HttpResponse {
+            status: 200,
+            headers: HeaderMap::new(),
+            body: "not json".to_string(),
+        };
+        let resp_wrong_schema = HttpResponse {
+            status: 200,
+            headers: HeaderMap::new(),
+            body: r#"{"wrong": "schema"}"#.to_string(),
+        };
+
+        // Test successful parsing
+        let parsed: TestData = resp_valid_json.json().unwrap();
+        assert_eq!(parsed.name, "Alice");
+        assert_eq!(parsed.age, 30);
+
+        // Test serde_json::Value parsing
+        let json_value: serde_json::Value = resp_valid_json.json().unwrap();
+        assert_eq!(json_value["name"], "Alice");
+        assert_eq!(json_value["age"], 30);
+
+        // Test parsing invalid JSON
+        let result: Result<TestData, _> = resp_invalid_json.json();
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), HttpError::Parse(_)));
+
+        // Test parsing JSON with wrong schema
+        let result: Result<TestData, _> = resp_wrong_schema.json();
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), HttpError::Parse(_)));
+    }
+
+    #[test]
+    fn test_response_text() {
+        let resp = HttpResponse {
+            status: 200,
+            headers: HeaderMap::new(),
+            body: "Hello, World!".to_string(),
+        };
+
+        assert_eq!(resp.text(), "Hello, World!");
+        assert_eq!(resp.text(), &resp.body); // Ensure it's the same reference
     }
 }

@@ -34,7 +34,7 @@ impl<'de> Deserialize<'de> for Request {
         }
 
         let helper = RequestHelper::deserialize(deserializer)?;
-        let method = HttpMethod::from_str(&helper.method)
+        let method = helper.method.parse::<HttpMethod>()
             .map_err(|e| de::Error::custom(format!("Invalid HTTP method: {}", e)))?;
 
         Ok(Request {
