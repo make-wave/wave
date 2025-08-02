@@ -1,5 +1,5 @@
 use clap::Parser;
-use wave::collection::{load_collection, resolve_request_vars};
+use wave::collection::{load_collection, resolve_request_vars, yaml_to_json};
 use wave::{handle_delete, handle_get, handle_patch, handle_post, handle_put, Cli};
 
 fn spinner_msg(method: &str, url: &str, params: &[String]) -> String {
@@ -22,39 +22,6 @@ fn prepare_headers_and_body(
         .collect();
     match &resolved.body {
         Some(wave::collection::Body::Json(map)) => {
-            fn yaml_to_json(val: &serde_yaml::Value) -> serde_json::Value {
-                match val {
-                    serde_yaml::Value::Null => serde_json::Value::Null,
-                    serde_yaml::Value::Bool(b) => serde_json::Value::Bool(*b),
-                    serde_yaml::Value::Number(n) => {
-                        if let Some(i) = n.as_i64() {
-                            serde_json::Value::Number(i.into())
-                        } else if let Some(f) = n.as_f64() {
-                            serde_json::Number::from_f64(f)
-                                .map(serde_json::Value::Number)
-                                .unwrap_or(serde_json::Value::Null)
-                        } else {
-                            serde_json::Value::Null
-                        }
-                    }
-                    serde_yaml::Value::String(s) => serde_json::Value::String(s.clone()),
-                    serde_yaml::Value::Sequence(seq) => {
-                        serde_json::Value::Array(seq.iter().map(yaml_to_json).collect())
-                    }
-                    serde_yaml::Value::Mapping(map) => {
-                        let mut obj = serde_json::Map::new();
-                        for (k, v) in map {
-                            let key = match k {
-                                serde_yaml::Value::String(s) => s.clone(),
-                                _ => serde_yaml::to_string(k).unwrap_or_default(),
-                            };
-                            obj.insert(key, yaml_to_json(v));
-                        }
-                        serde_json::Value::Object(obj)
-                    }
-                    _ => serde_json::Value::Null,
-                }
-            }
             let json_obj = serde_json::Value::Object(
                 map.iter()
                     .map(|(k, v)| (k.clone(), yaml_to_json(v)))
