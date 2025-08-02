@@ -148,55 +148,34 @@ pub fn handle_get(url: &str, params: &[String], verbose: bool, spinner_msg: &str
     execute_request_with_spinner(&req, spinner_msg, verbose);
 }
 
-pub fn handle_post(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
+// Consolidated handler for POST/PUT/PATCH methods with body data
+pub fn handle_method_with_body(method: HttpMethod, url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
     let url = ensure_url_scheme(url);
     let (headers, data) = parse_params(params);
 
     let req = if form {
         let body = RequestBody::form(data);
-        HttpRequest::with_body_from_headers(&url, HttpMethod::Post, Some(body), headers)
+        HttpRequest::with_body_from_headers(&url, method, Some(body), headers)
     } else {
         match RequestBody::json(&data.into_iter().collect::<HashMap<String, String>>()) {
-            Ok(body) => HttpRequest::with_body_from_headers(&url, HttpMethod::Post, Some(body), headers),
-            Err(_) => HttpRequest::new_with_headers(&url, HttpMethod::Post, Some("{}".to_string()), headers)
+            Ok(body) => HttpRequest::with_body_from_headers(&url, method, Some(body), headers),
+            Err(_) => HttpRequest::new_with_headers(&url, method, Some("{}".to_string()), headers)
         }
     };
     
     execute_request_with_spinner(&req, spinner_msg, verbose);
+}
+
+pub fn handle_post(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
+    handle_method_with_body(HttpMethod::Post, url, params, form, verbose, spinner_msg);
 }
 
 pub fn handle_put(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
-    let url = ensure_url_scheme(url);
-    let (headers, data) = parse_params(params);
-
-    let req = if form {
-        let body = RequestBody::form(data);
-        HttpRequest::with_body_from_headers(&url, HttpMethod::Put, Some(body), headers)
-    } else {
-        match RequestBody::json(&data.into_iter().collect::<HashMap<String, String>>()) {
-            Ok(body) => HttpRequest::with_body_from_headers(&url, HttpMethod::Put, Some(body), headers),
-            Err(_) => HttpRequest::new_with_headers(&url, HttpMethod::Put, Some("{}".to_string()), headers)
-        }
-    };
-    
-    execute_request_with_spinner(&req, spinner_msg, verbose);
+    handle_method_with_body(HttpMethod::Put, url, params, form, verbose, spinner_msg);
 }
 
 pub fn handle_patch(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
-    let url = ensure_url_scheme(url);
-    let (headers, data) = parse_params(params);
-
-    let req = if form {
-        let body = RequestBody::form(data);
-        HttpRequest::with_body_from_headers(&url, HttpMethod::Patch, Some(body), headers)
-    } else {
-        match RequestBody::json(&data.into_iter().collect::<HashMap<String, String>>()) {
-            Ok(body) => HttpRequest::with_body_from_headers(&url, HttpMethod::Patch, Some(body), headers),
-            Err(_) => HttpRequest::new_with_headers(&url, HttpMethod::Patch, Some("{}".to_string()), headers)
-        }
-    };
-    
-    execute_request_with_spinner(&req, spinner_msg, verbose);
+    handle_method_with_body(HttpMethod::Patch, url, params, form, verbose, spinner_msg);
 }
 
 pub fn handle_delete(url: &str, params: &[String], verbose: bool, spinner_msg: &str) {
