@@ -54,30 +54,27 @@ fn format_header(name: &str, value: &str) -> String {
     )
 }
 
+fn should_show_all_headers(verbose: bool, status: u16) -> bool {
+    verbose || (status >= 400 && status <= 599)
+}
+
+fn format_all_headers(headers: &http::HeaderMap) -> String {
+    let mut output = String::new();
+    for (name, value) in headers {
+        output.push_str(&format_header(
+            name.as_str(),
+            value.to_str().unwrap_or("<invalid header value>")
+        ));
+    }
+    output
+}
+
 fn format_headers_section(resp: &HttpResponse, verbose: bool) -> (String, bool) {
     let mut output = String::new();
-    let mut showed_headers = false;
+    let showed_headers = should_show_all_headers(verbose, resp.status);
 
-    // Show all headers in verbose mode
-    if verbose {
-        for (name, value) in &resp.headers {
-            output.push_str(&format_header(
-                name.as_str(),
-                value.to_str().unwrap_or("<invalid header value>")
-            ));
-        }
-        showed_headers = true;
-    }
-
-    // Show all headers if error status (4xx/5xx) and not already shown
-    if !verbose && (resp.status >= 400 && resp.status <= 599) {
-        for (name, value) in &resp.headers {
-            output.push_str(&format_header(
-                name.as_str(),
-                value.to_str().unwrap_or("<invalid header value>")
-            ));
-        }
-        showed_headers = true;
+    if showed_headers {
+        output.push_str(&format_all_headers(&resp.headers));
     }
 
     (output, showed_headers)
@@ -95,10 +92,10 @@ fn format_content_type_if_needed(resp: &HttpResponse, is_json: bool, showed_head
     String::new()
 }
 
-fn format_body(body: &str) -> String {
-    match serde_json::from_str::<serde_json::Value>(body) {
-        Ok(json) => pretty_print_json_colored(&json),
-        Err(_) => {
+fn format_body(body: &str, parsed_json: Option<&serde_json::Value>) -> String {
+    match parsed_json {
+        Some(json) => pretty_print_json_colored(json),
+        None => {
             let value_style = Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::White)));
             format!(
                 "{}{}{}\n",
@@ -116,18 +113,19 @@ pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
     // Format status line
     output.push_str(&format_status_line(resp.status));
     
+    // Parse JSON once and reuse the result
+    let parsed_json = serde_json::from_str::<serde_json::Value>(&resp.body).ok();
+    let is_json = parsed_json.is_some();
+    
     // Format headers section
     let (headers_output, showed_headers) = format_headers_section(resp, verbose);
     output.push_str(&headers_output);
     
-    // Check if body is JSON
-    let is_json = serde_json::from_str::<serde_json::Value>(&resp.body).is_ok();
-    
     // Show Content-Type if needed
     output.push_str(&format_content_type_if_needed(resp, is_json, showed_headers));
     
-    // Format body
-    output.push_str(&format_body(&resp.body));
+    // Format body using pre-parsed JSON
+    output.push_str(&format_body(&resp.body, parsed_json.as_ref()));
     
     output
 }
