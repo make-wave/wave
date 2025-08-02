@@ -1,4 +1,31 @@
 use async_trait::async_trait;
+use std::fmt;
+
+/// Custom error types for HTTP operations
+#[derive(Debug, Clone)]
+pub enum HttpError {
+    /// Network-related errors (connection failed, timeout, etc.)
+    Network(String),
+    /// HTTP parsing errors (malformed response, invalid headers, etc.)
+    Parse(String),
+    /// Unsupported HTTP method
+    UnsupportedMethod(String),
+    /// Other errors
+    Other(String),
+}
+
+impl fmt::Display for HttpError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HttpError::Network(msg) => write!(f, "Network error: {}", msg),
+            HttpError::Parse(msg) => write!(f, "Parse error: {}", msg),
+            HttpError::UnsupportedMethod(method) => write!(f, "Unsupported HTTP method: {}", method),
+            HttpError::Other(msg) => write!(f, "Error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for HttpError {}
 
 /// Represents an HTTP response.
 #[derive(Clone, Debug, PartialEq)]
@@ -37,7 +64,7 @@ impl HttpRequest {
 /// Trait for HTTP backends.
 #[async_trait]
 pub trait HttpBackend {
-    async fn send(&self, req: &HttpRequest) -> Result<HttpResponse, Box<dyn std::error::Error>>;
+    async fn send(&self, req: &HttpRequest) -> Result<HttpResponse, HttpError>;
 }
 
 /// Default backend using reqwest for real HTTP requests.
@@ -45,7 +72,7 @@ pub struct ReqwestBackend;
 
 #[async_trait]
 impl HttpBackend for ReqwestBackend {
-    async fn send(&self, req: &HttpRequest) -> Result<HttpResponse, Box<dyn std::error::Error>> {
+    async fn send(&self, req: &HttpRequest) -> Result<HttpResponse, HttpError> {
         let client = reqwest::Client::new();
         let mut request_builder = match req.method.as_str() {
             "GET" => client.get(&req.url),
@@ -53,7 +80,7 @@ impl HttpBackend for ReqwestBackend {
             "PUT" => client.put(&req.url),
             "DELETE" => client.delete(&req.url),
             "PATCH" => client.patch(&req.url),
-            _ => return Err("Unsupported HTTP method".into()),
+            _ => return Err(HttpError::UnsupportedMethod(req.method.clone())),
         };
         if let Some(ref body) = req.body {
             request_builder = request_builder.body(body.clone());
@@ -62,14 +89,21 @@ impl HttpBackend for ReqwestBackend {
         for (key, value) in &req.headers {
             request_builder = request_builder.header(key, value);
         }
-        let resp = request_builder.send().await?;
+        let resp = request_builder.send().await
+            .map_err(|e| HttpError::Network(e.to_string()))?;
         let status = resp.status().as_u16();
         let headers = resp
             .headers()
             .iter()
-            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+            .map(|(k, v)| {
+                let value_str = v.to_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|_| format!("{:?}", v.as_bytes()));
+                (k.to_string(), value_str)
+            })
             .collect();
-        let body = resp.text().await?;
+        let body = resp.text().await
+            .map_err(|e| HttpError::Parse(e.to_string()))?;
         Ok(HttpResponse {
             status,
             headers,
@@ -131,7 +165,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         &self,
         url: &str,
         headers: Vec<(String, String)>,
-    ) -> Result<HttpResponse, Box<dyn std::error::Error>> {
+    ) -> Result<HttpResponse, HttpError> {
         let req = HttpRequest::new(url, "GET", None, headers);
         self.backend.send(&req).await
     }
@@ -141,7 +175,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         url: &str,
         body: &str,
         headers: Vec<(String, String)>,
-    ) -> Result<HttpResponse, Box<dyn std::error::Error>> {
+    ) -> Result<HttpResponse, HttpError> {
         let req = HttpRequest::new(url, "POST", Some(body.to_string()), headers);
         self.backend.send(&req).await
     }
@@ -151,7 +185,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         url: &str,
         body: &str,
         headers: Vec<(String, String)>,
-    ) -> Result<HttpResponse, Box<dyn std::error::Error>> {
+    ) -> Result<HttpResponse, HttpError> {
         let req = HttpRequest::new(url, "PUT", Some(body.to_string()), headers);
         self.backend.send(&req).await
     }
@@ -160,7 +194,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         &self,
         url: &str,
         headers: Vec<(String, String)>,
-    ) -> Result<HttpResponse, Box<dyn std::error::Error>> {
+    ) -> Result<HttpResponse, HttpError> {
         let req = HttpRequest::new(url, "DELETE", None, headers);
         self.backend.send(&req).await
     }
@@ -170,7 +204,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
         url: &str,
         body: &str,
         headers: Vec<(String, String)>,
-    ) -> Result<HttpResponse, Box<dyn std::error::Error>> {
+    ) -> Result<HttpResponse, HttpError> {
         let req = HttpRequest::new(url, "PATCH", Some(body.to_string()), headers);
         self.backend.send(&req).await
     }
@@ -185,7 +219,7 @@ mod tests {
     struct MockBackend {
         pub last_request: std::sync::Mutex<Option<HttpRequest>>,
         pub response: HttpResponse,
-        pub error: Option<String>,
+        pub error: Option<HttpError>,
     }
 
     #[async_trait]
@@ -193,11 +227,11 @@ mod tests {
         async fn send(
             &self,
             req: &HttpRequest,
-        ) -> Result<HttpResponse, Box<dyn std::error::Error>> {
+        ) -> Result<HttpResponse, HttpError> {
             let mut last = self.last_request.lock().unwrap();
             *last = Some(req.clone());
             if let Some(ref err) = self.error {
-                Err(err.clone().into())
+                Err(err.clone())
             } else {
                 Ok(self.response.clone())
             }
@@ -214,7 +248,7 @@ mod tests {
         async fn send(
             &self,
             req: &HttpRequest,
-        ) -> Result<HttpResponse, Box<dyn std::error::Error>> {
+        ) -> Result<HttpResponse, HttpError> {
             self.as_ref().send(req).await
         }
     }
@@ -315,11 +349,12 @@ mod tests {
                 headers: vec![],
                 body: "fail".to_string(),
             },
-            error: Some("mock error".to_string()),
+            error: Some(HttpError::Network("mock error".to_string())),
         });
         let client = Client::new(backend.clone());
         let err = block_on(client.get("http://fail", vec![])).unwrap_err();
-        assert_eq!(format!("{err}"), "mock error");
+        assert!(matches!(err, HttpError::Network(_)));
+        assert_eq!(format!("{err}"), "Network error: mock error");
         let req = backend.last_request.lock().unwrap().clone().unwrap();
         assert_eq!(req.url, "http://fail");
     }

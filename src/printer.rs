@@ -1,4 +1,4 @@
-use crate::http_client::HttpResponse;
+use crate::http_client::{HttpResponse, HttpError};
 use anstyle::{AnsiColor, Style};
 
 pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
@@ -100,13 +100,13 @@ pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
     output
 }
 
-pub fn print_response(result: Result<HttpResponse, Box<dyn std::error::Error>>, verbose: bool) {
+pub fn print_response(result: Result<HttpResponse, HttpError>, verbose: bool) {
     let _ = print_response_to(&mut std::io::stdout(), result, verbose);
 }
 
 fn print_response_to<W: std::io::Write>(
     writer: &mut W,
-    result: Result<HttpResponse, Box<dyn std::error::Error>>,
+    result: Result<HttpResponse, HttpError>,
     verbose: bool,
 ) -> std::io::Result<()> {
     match result {
@@ -129,8 +129,6 @@ fn print_response_to<W: std::io::Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::http_client::HttpResponse;
-
     #[test]
     fn test_format_status_color_2xx() {
         let resp = HttpResponse {

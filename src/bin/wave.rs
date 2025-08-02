@@ -94,7 +94,7 @@ fn prepare_headers_and_body(
 
 fn run_with_spinner_and_print<F>(spinner_msg: &str, verbose: bool, f: F)
 where
-    F: FnOnce() -> Result<wave::http_client::HttpResponse, Box<dyn std::error::Error>>,
+    F: FnOnce() -> Result<wave::http_client::HttpResponse, wave::http_client::HttpError>,
 {
     let result = wave::run_with_spinner(spinner_msg, f);
     wave::printer::print_response(result, verbose);
