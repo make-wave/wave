@@ -1,9 +1,9 @@
+use crate::http_client::HttpMethod;
+use serde::de::{self, Deserializer, MapAccess, Visitor};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
-use crate::http_client::HttpMethod;
-use serde::de::{self, Deserializer, MapAccess, Visitor};
 
 /// Converts a serde_yaml::Value to serde_json::Value for YAML-to-JSON conversion
 pub fn yaml_to_json(val: &serde_yaml::Value) -> serde_json::Value {
@@ -70,7 +70,9 @@ impl<'de> Deserialize<'de> for Request {
         }
 
         let helper = RequestHelper::deserialize(deserializer)?;
-        let method = helper.method.parse::<HttpMethod>()
+        let method = helper
+            .method
+            .parse::<HttpMethod>()
             .map_err(|e| de::Error::custom(format!("Invalid HTTP method: {}", e)))?;
 
         Ok(Request {
@@ -302,22 +304,28 @@ requests:
     #[test]
     fn test_yaml_to_json_conversion() {
         // Test null
-        assert_eq!(yaml_to_json(&serde_yaml::Value::Null), serde_json::Value::Null);
-        
+        assert_eq!(
+            yaml_to_json(&serde_yaml::Value::Null),
+            serde_json::Value::Null
+        );
+
         // Test boolean
-        assert_eq!(yaml_to_json(&serde_yaml::Value::Bool(true)), serde_json::Value::Bool(true));
-        
+        assert_eq!(
+            yaml_to_json(&serde_yaml::Value::Bool(true)),
+            serde_json::Value::Bool(true)
+        );
+
         // Test string
         assert_eq!(
-            yaml_to_json(&serde_yaml::Value::String("test".to_string())), 
+            yaml_to_json(&serde_yaml::Value::String("test".to_string())),
             serde_json::Value::String("test".to_string())
         );
-        
+
         // Test number (integer)
         let yaml_num = serde_yaml::Value::Number(serde_yaml::Number::from(42));
         let json_result = yaml_to_json(&yaml_num);
         assert_eq!(json_result, serde_json::Value::Number(42.into()));
-        
+
         // Test array
         let yaml_array = serde_yaml::Value::Sequence(vec![
             serde_yaml::Value::String("item1".to_string()),
@@ -331,7 +339,7 @@ requests:
                 serde_json::Value::String("item2".to_string()),
             ])
         );
-        
+
         // Test object
         let mut yaml_map = serde_yaml::Mapping::new();
         yaml_map.insert(
@@ -340,9 +348,12 @@ requests:
         );
         let yaml_obj = serde_yaml::Value::Mapping(yaml_map);
         let json_result = yaml_to_json(&yaml_obj);
-        
+
         let mut expected_map = serde_json::Map::new();
-        expected_map.insert("key".to_string(), serde_json::Value::String("value".to_string()));
+        expected_map.insert(
+            "key".to_string(),
+            serde_json::Value::String("value".to_string()),
+        );
         assert_eq!(json_result, serde_json::Value::Object(expected_map));
     }
 }

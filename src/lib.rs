@@ -3,7 +3,7 @@ pub mod http_client;
 pub mod printer;
 
 use clap::{Parser, Subcommand};
-use http_client::{Client, ReqwestBackend, HttpRequest, HttpMethod, RequestBody};
+use http_client::{Client, HttpMethod, HttpRequest, RequestBody, ReqwestBackend};
 use std::collections::HashMap;
 
 #[derive(Subcommand)]
@@ -136,7 +136,7 @@ where
 pub fn execute_request_with_spinner(req: &HttpRequest, spinner_msg: &str, verbose: bool) {
     let client = Client::new(ReqwestBackend);
     let rt = tokio::runtime::Runtime::new().unwrap();
-    
+
     let result = run_with_spinner(spinner_msg, || rt.block_on(client.send(req)));
     print_response(result, verbose);
 }
@@ -149,7 +149,14 @@ pub fn handle_get(url: &str, params: &[String], verbose: bool, spinner_msg: &str
 }
 
 // Consolidated handler for POST/PUT/PATCH methods with body data
-pub fn handle_method_with_body(method: HttpMethod, url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
+pub fn handle_method_with_body(
+    method: HttpMethod,
+    url: &str,
+    params: &[String],
+    form: bool,
+    verbose: bool,
+    spinner_msg: &str,
+) {
     let url = ensure_url_scheme(url);
     let (headers, data) = parse_params(params);
 
@@ -159,10 +166,10 @@ pub fn handle_method_with_body(method: HttpMethod, url: &str, params: &[String],
     } else {
         match RequestBody::json(&data.into_iter().collect::<HashMap<String, String>>()) {
             Ok(body) => HttpRequest::with_body_from_headers(&url, method, Some(body), headers),
-            Err(_) => HttpRequest::new_with_headers(&url, method, Some("{}".to_string()), headers)
+            Err(_) => HttpRequest::new_with_headers(&url, method, Some("{}".to_string()), headers),
         }
     };
-    
+
     execute_request_with_spinner(&req, spinner_msg, verbose);
 }
 

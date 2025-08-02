@@ -1,4 +1,4 @@
-use crate::http_client::{HttpResponse, HttpError};
+use crate::http_client::{HttpError, HttpResponse};
 use anstyle::{AnsiColor, Style};
 use std::io::{self, Write};
 
@@ -55,7 +55,7 @@ fn format_header(name: &str, value: &str) -> String {
 }
 
 fn should_show_all_headers(verbose: bool, status: u16) -> bool {
-    verbose || (status >= 400 && status <= 599)
+    verbose || (400..=599).contains(&status)
 }
 
 fn format_all_headers(headers: &http::HeaderMap) -> String {
@@ -63,7 +63,7 @@ fn format_all_headers(headers: &http::HeaderMap) -> String {
     for (name, value) in headers {
         output.push_str(&format_header(
             name.as_str(),
-            value.to_str().unwrap_or("<invalid header value>")
+            value.to_str().unwrap_or("<invalid header value>"),
         ));
     }
     output
@@ -80,12 +80,16 @@ fn format_headers_section(resp: &HttpResponse, verbose: bool) -> (String, bool) 
     (output, showed_headers)
 }
 
-fn format_content_type_if_needed(resp: &HttpResponse, is_json: bool, showed_headers: bool) -> String {
+fn format_content_type_if_needed(
+    resp: &HttpResponse,
+    is_json: bool,
+    showed_headers: bool,
+) -> String {
     if !is_json && !showed_headers {
         if let Some(value) = resp.headers.get("content-type") {
             return format_header(
                 "Content-Type",
-                value.to_str().unwrap_or("<invalid header value>")
+                value.to_str().unwrap_or("<invalid header value>"),
             );
         }
     }
@@ -109,24 +113,28 @@ fn format_body(body: &str, parsed_json: Option<&serde_json::Value>) -> String {
 
 pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
     let mut output = String::new();
-    
+
     // Format status line
     output.push_str(&format_status_line(resp.status));
-    
+
     // Parse JSON once and reuse the result
     let parsed_json = serde_json::from_str::<serde_json::Value>(&resp.body).ok();
     let is_json = parsed_json.is_some();
-    
+
     // Format headers section
     let (headers_output, showed_headers) = format_headers_section(resp, verbose);
     output.push_str(&headers_output);
-    
+
     // Show Content-Type if needed
-    output.push_str(&format_content_type_if_needed(resp, is_json, showed_headers));
-    
+    output.push_str(&format_content_type_if_needed(
+        resp,
+        is_json,
+        showed_headers,
+    ));
+
     // Format body using pre-parsed JSON
     output.push_str(&format_body(&resp.body, parsed_json.as_ref()));
-    
+
     output
 }
 
@@ -160,7 +168,7 @@ fn print_response_to<W: Write>(
 mod tests {
     use super::*;
     use http::HeaderMap;
-    
+
     #[test]
     fn test_format_status_color_2xx() {
         let resp = HttpResponse {
@@ -216,7 +224,7 @@ mod tests {
     fn test_format_headers_verbose() {
         let mut headers = HeaderMap::new();
         headers.insert("content-type", "application/json".parse().unwrap());
-        
+
         let resp = HttpResponse {
             status: 200,
             headers,
@@ -231,7 +239,7 @@ mod tests {
     fn test_format_content_type_if_not_json() {
         let mut headers = HeaderMap::new();
         headers.insert("content-type", "text/html".parse().unwrap());
-        
+
         let resp = HttpResponse {
             status: 200,
             headers,
@@ -248,7 +256,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("content-type", "application/json".parse().unwrap());
         headers.insert("x-error", "Not Found".parse().unwrap());
-        
+
         let resp = HttpResponse {
             status: 404,
             headers,

@@ -118,38 +118,57 @@ fn main() {
             let coll_result = load_collection(&yaml_path).or_else(|_| load_collection(&yml_path));
             match coll_result {
                 Ok(coll) => {
-                            let file_vars = coll.variables.unwrap_or_default();
-                            match coll.requests.iter().find(|r| r.name == request) {
-                                Some(req) => match resolve_request_vars(req, &file_vars) {
-                                    Ok(resolved) => {
-                                        let method = &resolved.method;
-                                        let spinner_msg = format!("{} {}", method, resolved.url);
-                                        match resolved.method {
-                                            wave::http_client::HttpMethod::Get => {
-                                                let headers: Vec<(String, String)> = resolved
-                                                    .headers
-                                                    .unwrap_or_default()
-                                                    .into_iter()
-                                                    .collect();
-                                                let req = wave::http_client::HttpRequest::new_with_headers(&resolved.url, wave::http_client::HttpMethod::Get, None, headers);
-                                                send_request(&req, &spinner_msg, verbose);
-                                            }
-                                            wave::http_client::HttpMethod::Delete => {
-                                                let headers: Vec<(String, String)> = resolved
-                                                    .headers
-                                                    .unwrap_or_default()
-                                                    .into_iter()
-                                                    .collect();
-                                                let req = wave::http_client::HttpRequest::new_with_headers(&resolved.url, wave::http_client::HttpMethod::Delete, None, headers);
-                                                send_request(&req, &spinner_msg, verbose);
-                                            }
-                                            wave::http_client::HttpMethod::Post | wave::http_client::HttpMethod::Put | wave::http_client::HttpMethod::Patch => {
-                                                let (headers, body, _is_form) = prepare_headers_and_body(&resolved);
-                                                let req = wave::http_client::HttpRequest::new_with_headers(&resolved.url, resolved.method.clone(), Some(body), headers);
-                                                send_request(&req, &spinner_msg, verbose);
-                                            }
-                                            _ => eprintln!("Unsupported method: {method}"),
-                                        }                            }
+                    let file_vars = coll.variables.unwrap_or_default();
+                    match coll.requests.iter().find(|r| r.name == request) {
+                        Some(req) => match resolve_request_vars(req, &file_vars) {
+                            Ok(resolved) => {
+                                let method = &resolved.method;
+                                let spinner_msg = format!("{} {}", method, resolved.url);
+                                match resolved.method {
+                                    wave::http_client::HttpMethod::Get => {
+                                        let headers: Vec<(String, String)> = resolved
+                                            .headers
+                                            .unwrap_or_default()
+                                            .into_iter()
+                                            .collect();
+                                        let req = wave::http_client::HttpRequest::new_with_headers(
+                                            &resolved.url,
+                                            wave::http_client::HttpMethod::Get,
+                                            None,
+                                            headers,
+                                        );
+                                        send_request(&req, &spinner_msg, verbose);
+                                    }
+                                    wave::http_client::HttpMethod::Delete => {
+                                        let headers: Vec<(String, String)> = resolved
+                                            .headers
+                                            .unwrap_or_default()
+                                            .into_iter()
+                                            .collect();
+                                        let req = wave::http_client::HttpRequest::new_with_headers(
+                                            &resolved.url,
+                                            wave::http_client::HttpMethod::Delete,
+                                            None,
+                                            headers,
+                                        );
+                                        send_request(&req, &spinner_msg, verbose);
+                                    }
+                                    wave::http_client::HttpMethod::Post
+                                    | wave::http_client::HttpMethod::Put
+                                    | wave::http_client::HttpMethod::Patch => {
+                                        let (headers, body, _is_form) =
+                                            prepare_headers_and_body(&resolved);
+                                        let req = wave::http_client::HttpRequest::new_with_headers(
+                                            &resolved.url,
+                                            resolved.method.clone(),
+                                            Some(body),
+                                            headers,
+                                        );
+                                        send_request(&req, &spinner_msg, verbose);
+                                    }
+                                    _ => eprintln!("Unsupported method: {method}"),
+                                }
+                            }
                             Err(e) => eprintln!("Variable resolution error: {e}"),
                         },
                         None => {
