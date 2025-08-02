@@ -132,24 +132,26 @@ where
     result
 }
 
-pub fn handle_get(url: &str, params: &[String], verbose: bool, spinner_msg: &str) {
-    let url = ensure_url_scheme(url);
-    let (headers, _) = parse_params(params);
+// New: Common HTTP execution logic
+pub fn execute_request_with_spinner(req: &HttpRequest, spinner_msg: &str, verbose: bool) {
     let client = Client::new(ReqwestBackend);
     let rt = tokio::runtime::Runtime::new().unwrap();
     
-    let req = HttpRequest::new_with_headers(&url, HttpMethod::Get, None, headers);
-    let result = run_with_spinner(spinner_msg, || rt.block_on(client.send(&req)));
+    let result = run_with_spinner(spinner_msg, || rt.block_on(client.send(req)));
     print_response(result, verbose);
+}
+
+pub fn handle_get(url: &str, params: &[String], verbose: bool, spinner_msg: &str) {
+    let url = ensure_url_scheme(url);
+    let (headers, _) = parse_params(params);
+    let req = HttpRequest::new_with_headers(&url, HttpMethod::Get, None, headers);
+    execute_request_with_spinner(&req, spinner_msg, verbose);
 }
 
 pub fn handle_post(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
     let url = ensure_url_scheme(url);
     let (headers, data) = parse_params(params);
 
-    let client = Client::new(ReqwestBackend);
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    
     let req = if form {
         let body = RequestBody::form(data);
         HttpRequest::with_body_from_headers(&url, HttpMethod::Post, Some(body), headers)
@@ -160,17 +162,13 @@ pub fn handle_post(url: &str, params: &[String], form: bool, verbose: bool, spin
         }
     };
     
-    let result = run_with_spinner(spinner_msg, || rt.block_on(client.send(&req)));
-    print_response(result, verbose);
+    execute_request_with_spinner(&req, spinner_msg, verbose);
 }
 
 pub fn handle_put(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
     let url = ensure_url_scheme(url);
     let (headers, data) = parse_params(params);
 
-    let client = Client::new(ReqwestBackend);
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    
     let req = if form {
         let body = RequestBody::form(data);
         HttpRequest::with_body_from_headers(&url, HttpMethod::Put, Some(body), headers)
@@ -181,17 +179,13 @@ pub fn handle_put(url: &str, params: &[String], form: bool, verbose: bool, spinn
         }
     };
     
-    let result = run_with_spinner(spinner_msg, || rt.block_on(client.send(&req)));
-    print_response(result, verbose);
+    execute_request_with_spinner(&req, spinner_msg, verbose);
 }
 
 pub fn handle_patch(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) {
     let url = ensure_url_scheme(url);
     let (headers, data) = parse_params(params);
 
-    let client = Client::new(ReqwestBackend);
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    
     let req = if form {
         let body = RequestBody::form(data);
         HttpRequest::with_body_from_headers(&url, HttpMethod::Patch, Some(body), headers)
@@ -202,19 +196,14 @@ pub fn handle_patch(url: &str, params: &[String], form: bool, verbose: bool, spi
         }
     };
     
-    let result = run_with_spinner(spinner_msg, || rt.block_on(client.send(&req)));
-    print_response(result, verbose);
+    execute_request_with_spinner(&req, spinner_msg, verbose);
 }
 
 pub fn handle_delete(url: &str, params: &[String], verbose: bool, spinner_msg: &str) {
     let url = ensure_url_scheme(url);
     let (headers, _) = parse_params(params);
-    let client = Client::new(ReqwestBackend);
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    
     let req = HttpRequest::new_with_headers(&url, HttpMethod::Delete, None, headers);
-    let result = run_with_spinner(spinner_msg, || rt.block_on(client.send(&req)));
-    print_response(result, verbose);
+    execute_request_with_spinner(&req, spinner_msg, verbose);
 }
 
 #[cfg(test)]
