@@ -2,21 +2,20 @@ use crate::http_client::{HttpResponse, HttpError};
 use anstyle::{AnsiColor, Style};
 use std::io::{self, Write};
 
-pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
-    fn pretty_print_json_colored(value: &serde_json::Value) -> String {
-        use colored_json::{Color, ColoredFormatter, PrettyFormatter, Styler};
-        let styler = Styler {
-            key: Color::Yellow.bold(),
-            ..Default::default()
-        };
-        let formatter = ColoredFormatter::with_styler(PrettyFormatter::new(), styler);
-        formatter
-            .to_colored_json_auto(value)
-            .unwrap_or_else(|_| serde_json::to_string_pretty(value).unwrap_or_default())
-    }
+fn pretty_print_json_colored(value: &serde_json::Value) -> String {
+    use colored_json::{Color, ColoredFormatter, PrettyFormatter, Styler};
+    let styler = Styler {
+        key: Color::Yellow.bold(),
+        ..Default::default()
+    };
+    let formatter = ColoredFormatter::with_styler(PrettyFormatter::new(), styler);
+    formatter
+        .to_colored_json_auto(value)
+        .unwrap_or_else(|_| serde_json::to_string_pretty(value).unwrap_or_default())
+}
 
-    let mut output = String::new();
-    let status_style = match resp.status {
+fn get_status_style(status: u16) -> Style {
+    match status {
         200..=299 => Style::new()
             .fg_color(Some(anstyle::Color::Ansi(AnsiColor::Green)))
             .bold(),
@@ -29,70 +28,107 @@ pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
         _ => Style::new()
             .fg_color(Some(anstyle::Color::Ansi(AnsiColor::White)))
             .bold(),
-    };
-    let key_style = Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Blue)));
-    let value_style = Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::White)));
-    output.push_str(&format!(
+    }
+}
+
+fn format_status_line(status: u16) -> String {
+    let status_style = get_status_style(status);
+    format!(
         "{}Status: {}{}\n",
         status_style.render(),
-        resp.status,
+        status,
         anstyle::Reset.render()
-    ));
+    )
+}
+
+fn format_header(name: &str, value: &str) -> String {
+    let key_style = Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Blue)));
+    let value_style = Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::White)));
+    format!(
+        "{}{}: {}{}{}\n",
+        key_style.render(),
+        name,
+        value_style.render(),
+        value,
+        anstyle::Reset.render()
+    )
+}
+
+fn format_headers_section(resp: &HttpResponse, verbose: bool) -> (String, bool) {
+    let mut output = String::new();
     let mut showed_headers = false;
+
+    // Show all headers in verbose mode
     if verbose {
         for (name, value) in &resp.headers {
-            output.push_str(&format!(
-                "{}{}: {}{}{}\n",
-                key_style.render(),
+            output.push_str(&format_header(
                 name.as_str(),
-                value_style.render(),
-                value.to_str().unwrap_or("<invalid header value>"),
-                anstyle::Reset.render()
+                value.to_str().unwrap_or("<invalid header value>")
             ));
         }
         showed_headers = true;
     }
-    let body = &resp.body;
-    let is_json = serde_json::from_str::<serde_json::Value>(body).is_ok();
+
     // Show all headers if error status (4xx/5xx) and not already shown
     if !verbose && (resp.status >= 400 && resp.status <= 599) {
         for (name, value) in &resp.headers {
-            output.push_str(&format!(
-                "{}{}: {}{}{}\n",
-                key_style.render(),
+            output.push_str(&format_header(
                 name.as_str(),
-                value_style.render(),
-                value.to_str().unwrap_or("<invalid header value>"),
-                anstyle::Reset.render()
+                value.to_str().unwrap_or("<invalid header value>")
             ));
         }
         showed_headers = true;
     }
-    // Show Content-Type if not JSON and not already shown
+
+    (output, showed_headers)
+}
+
+fn format_content_type_if_needed(resp: &HttpResponse, is_json: bool, showed_headers: bool) -> String {
     if !is_json && !showed_headers {
         if let Some(value) = resp.headers.get("content-type") {
-            output.push_str(&format!(
-                "{}Content-Type: {}{}{}\n",
-                key_style.render(),
-                value_style.render(),
-                value.to_str().unwrap_or("<invalid header value>"),
-                anstyle::Reset.render()
-            ));
+            return format_header(
+                "Content-Type",
+                value.to_str().unwrap_or("<invalid header value>")
+            );
         }
     }
+    String::new()
+}
+
+fn format_body(body: &str) -> String {
     match serde_json::from_str::<serde_json::Value>(body) {
-        Ok(json) => {
-            output.push_str(&pretty_print_json_colored(&json));
-        }
+        Ok(json) => pretty_print_json_colored(&json),
         Err(_) => {
-            output.push_str(&format!(
+            let value_style = Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::White)));
+            format!(
                 "{}{}{}\n",
                 value_style.render(),
                 body,
                 anstyle::Reset.render()
-            ));
+            )
         }
     }
+}
+
+pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
+    let mut output = String::new();
+    
+    // Format status line
+    output.push_str(&format_status_line(resp.status));
+    
+    // Format headers section
+    let (headers_output, showed_headers) = format_headers_section(resp, verbose);
+    output.push_str(&headers_output);
+    
+    // Check if body is JSON
+    let is_json = serde_json::from_str::<serde_json::Value>(&resp.body).is_ok();
+    
+    // Show Content-Type if needed
+    output.push_str(&format_content_type_if_needed(resp, is_json, showed_headers));
+    
+    // Format body
+    output.push_str(&format_body(&resp.body));
+    
     output
 }
 
