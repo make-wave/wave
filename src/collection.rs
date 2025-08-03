@@ -73,7 +73,7 @@ impl<'de> Deserialize<'de> for Request {
         let method = helper
             .method
             .parse::<HttpMethod>()
-            .map_err(|e| de::Error::custom(format!("Invalid HTTP method: {}", e)))?;
+            .map_err(|e| de::Error::custom(format!("Invalid HTTP method: {e}")))?;
 
         Ok(Request {
             name: helper.name,

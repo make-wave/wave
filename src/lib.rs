@@ -140,7 +140,7 @@ pub fn validate_params(params: &[String]) -> Result<HeaderDataTuple, WaveError> 
         } else {
             // Parameter doesn't match either format
             return Err(WaveError::Cli(CliError::InvalidHeaderFormat(format!(
-                "Parameter '{}' must be in 'key:value' (header) or 'key=value' (body) format", param
+                "Parameter '{param}' must be in 'key:value' (header) or 'key=value' (body) format"
             ))));
         }
     }
@@ -212,7 +212,7 @@ where
 pub fn execute_request_with_spinner(req: &HttpRequest, spinner_msg: &str, verbose: bool) -> Result<(), WaveError> {
     let client = Client::new(ReqwestBackend);
     let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| WaveError::Runtime(format!("Failed to create async runtime: {}", e)))?;
+        .map_err(|e| WaveError::Runtime(format!("Failed to create async runtime: {e}")))?;
 
     let result = run_with_spinner(spinner_msg, || rt.block_on(client.send(req)));
     print_response(result, verbose);

@@ -63,12 +63,12 @@ pub enum HttpError {
 impl fmt::Display for HttpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            HttpError::Network(msg) => write!(f, "Network error: {}", msg),
-            HttpError::Parse(msg) => write!(f, "Parse error: {}", msg),
+            HttpError::Network(msg) => write!(f, "Network error: {msg}"),
+            HttpError::Parse(msg) => write!(f, "Parse error: {msg}"),
             HttpError::UnsupportedMethod(method) => {
-                write!(f, "Unsupported HTTP method: {}", method)
+                write!(f, "Unsupported HTTP method: {method}")
             }
-            HttpError::Other(msg) => write!(f, "Error: {}", msg),
+            HttpError::Other(msg) => write!(f, "Error: {msg}"),
         }
     }
 }
@@ -88,7 +88,7 @@ impl RequestBody {
     /// Create a JSON body from any serializable type
     pub fn json<T: serde::Serialize>(data: &T) -> Result<Self, HttpError> {
         let value = serde_json::to_value(data)
-            .map_err(|e| HttpError::Parse(format!("Failed to serialize JSON: {}", e)))?;
+            .map_err(|e| HttpError::Parse(format!("Failed to serialize JSON: {e}")))?;
         Ok(RequestBody::Json(value))
     }
 
@@ -275,7 +275,7 @@ impl HttpResponse {
     /// Parse the response body as JSON
     pub fn json<T: serde::de::DeserializeOwned>(&self) -> Result<T, HttpError> {
         serde_json::from_str(&self.body)
-            .map_err(|e| HttpError::Parse(format!("Failed to parse JSON response: {}", e)))
+            .map_err(|e| HttpError::Parse(format!("Failed to parse JSON response: {e}")))
     }
 
     /// Get the response body as a string reference

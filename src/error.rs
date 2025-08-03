@@ -77,13 +77,13 @@ pub enum ConfigError {
 impl fmt::Display for WaveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            WaveError::Http(err) => write!(f, "{}", err),
-            WaveError::Collection(err) => write!(f, "{}", err),
-            WaveError::Cli(err) => write!(f, "{}", err),
-            WaveError::Io(msg) => write!(f, "I/O error: {}", msg),
-            WaveError::Parse(err) => write!(f, "{}", err),
-            WaveError::Config(err) => write!(f, "{}", err),
-            WaveError::Runtime(msg) => write!(f, "Runtime error: {}", msg),
+            WaveError::Http(err) => write!(f, "{err}"),
+            WaveError::Collection(err) => write!(f, "{err}"),
+            WaveError::Cli(err) => write!(f, "{err}"),
+            WaveError::Io(msg) => write!(f, "I/O error: {msg}"),
+            WaveError::Parse(err) => write!(f, "{err}"),
+            WaveError::Config(err) => write!(f, "{err}"),
+            WaveError::Runtime(msg) => write!(f, "Runtime error: {msg}"),
         }
     }
 }
@@ -92,19 +92,19 @@ impl fmt::Display for CollectionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CollectionError::FileNotFound(path) => {
-                write!(f, "Collection file not found: '{}'. Try running 'wave init' to create a collection.", path)
+                write!(f, "Collection file not found: '{path}'. Try running 'wave init' to create a collection.")
             }
             CollectionError::InvalidYaml(msg) => {
-                write!(f, "Invalid YAML in collection file: {}", msg)
+                write!(f, "Invalid YAML in collection file: {msg}")
             }
             CollectionError::RequestNotFound { collection, request } => {
-                write!(f, "Request '{}' not found in collection '{}'. Check the collection YAML file to see available requests.", request, collection)
+                write!(f, "Request '{request}' not found in collection '{collection}'. Check the collection YAML file to see available requests.")
             }
             CollectionError::VariableResolution(msg) => {
-                write!(f, "Failed to resolve variables: {}", msg)
+                write!(f, "Failed to resolve variables: {msg}")
             }
             CollectionError::DirectoryNotFound(path) => {
-                write!(f, "Collection directory not found: '{}'. Try running 'wave init' to create a collection.", path)
+                write!(f, "Collection directory not found: '{path}'. Try running 'wave init' to create a collection.")
             }
         }
     }
@@ -114,19 +114,19 @@ impl fmt::Display for CliError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CliError::InvalidUrl(url) => {
-                write!(f, "Invalid URL '{}'. URLs must include protocol (http:// or https://)", url)
+                write!(f, "Invalid URL '{url}'. URLs must include protocol (http:// or https://)")
             }
             CliError::MissingArguments(msg) => {
-                write!(f, "Missing required arguments: {}", msg)
+                write!(f, "Missing required arguments: {msg}")
             }
             CliError::InvalidHeaderFormat(header) => {
-                write!(f, "Invalid header format '{}'. Headers must be in 'key:value' format", header)
+                write!(f, "Invalid header format '{header}'. Headers must be in 'key:value' format")
             }
             CliError::InvalidBodyFormat(body) => {
-                write!(f, "Invalid body format '{}'. Body data must be in 'key=value' format", body)
+                write!(f, "Invalid body format '{body}'. Body data must be in 'key=value' format")
             }
             CliError::UnsupportedMethod(method) => {
-                write!(f, "Unsupported HTTP method: '{}'. Supported methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS", method)
+                write!(f, "Unsupported HTTP method: '{method}'. Supported methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS")
             }
         }
     }
@@ -136,16 +136,16 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ParseError::Json(msg) => {
-                write!(f, "JSON parsing error: {}", msg)
+                write!(f, "JSON parsing error: {msg}")
             }
             ParseError::Yaml(msg) => {
-                write!(f, "YAML parsing error: {}", msg)
+                write!(f, "YAML parsing error: {msg}")
             }
             ParseError::Header(msg) => {
-                write!(f, "Header parsing error: {}", msg)
+                write!(f, "Header parsing error: {msg}")
             }
             ParseError::Url(msg) => {
-                write!(f, "URL parsing error: {}", msg)
+                write!(f, "URL parsing error: {msg}")
             }
         }
     }
@@ -155,10 +155,10 @@ impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ConfigError::InvalidConfig(msg) => {
-                write!(f, "Invalid configuration: {}", msg)
+                write!(f, "Invalid configuration: {msg}")
             }
             ConfigError::MissingConfig(msg) => {
-                write!(f, "Missing configuration: {}", msg)
+                write!(f, "Missing configuration: {msg}")
             }
         }
     }
@@ -322,7 +322,7 @@ mod tests {
         for err in errors {
             // All errors should display without panicking
             let _ = err.to_string();
-            let _ = format!("{:?}", err);
+            let _ = format!("{err:?}");
         }
     }
 
@@ -340,9 +340,9 @@ mod tests {
 
         for (err, should_have_suggestion) in suggestions {
             if should_have_suggestion {
-                assert!(err.suggestion().is_some(), "Error should have suggestion: {}", err);
+                assert!(err.suggestion().is_some(), "Error should have suggestion: {err}");
             } else {
-                assert!(err.suggestion().is_none(), "Error should not have suggestion: {}", err);
+                assert!(err.suggestion().is_none(), "Error should not have suggestion: {err}");
             }
         }
     }

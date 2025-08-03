@@ -73,9 +73,9 @@ fn run() -> Result<(), WaveError> {
 
 fn main() {
     if let Err(e) = run() {
-        eprintln!("Error: {}", e);
+        eprintln!("Error: {e}");
         if let Some(suggestion) = e.suggestion() {
-            eprintln!("Suggestion: {}", suggestion);
+            eprintln!("Suggestion: {suggestion}");
         }
         std::process::exit(1);
     }
