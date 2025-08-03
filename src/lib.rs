@@ -241,8 +241,9 @@ fn prepare_collection_headers_and_body(
 pub fn handle_collection(collection_name: &str, request_name: &str, verbose: bool) {
     let yaml_path = format!(".wave/{collection_name}.yaml");
     let yml_path = format!(".wave/{collection_name}.yml");
-    let coll_result = collection::load_collection(&yaml_path).or_else(|_| collection::load_collection(&yml_path));
-    
+    let coll_result =
+        collection::load_collection(&yaml_path).or_else(|_| collection::load_collection(&yml_path));
+
     match coll_result {
         Ok(coll) => {
             let file_vars = coll.variables.unwrap_or_default();
@@ -252,11 +253,8 @@ pub fn handle_collection(collection_name: &str, request_name: &str, verbose: boo
                         let spinner_msg = format!("{} {}", resolved.method, resolved.url);
                         match resolved.method {
                             HttpMethod::Get => {
-                                let headers: Vec<(String, String)> = resolved
-                                    .headers
-                                    .unwrap_or_default()
-                                    .into_iter()
-                                    .collect();
+                                let headers: Vec<(String, String)> =
+                                    resolved.headers.unwrap_or_default().into_iter().collect();
                                 let req = HttpRequest::new_with_headers(
                                     &resolved.url,
                                     HttpMethod::Get,
@@ -266,11 +264,8 @@ pub fn handle_collection(collection_name: &str, request_name: &str, verbose: boo
                                 execute_request_with_spinner(&req, &spinner_msg, verbose);
                             }
                             HttpMethod::Delete => {
-                                let headers: Vec<(String, String)> = resolved
-                                    .headers
-                                    .unwrap_or_default()
-                                    .into_iter()
-                                    .collect();
+                                let headers: Vec<(String, String)> =
+                                    resolved.headers.unwrap_or_default().into_iter().collect();
                                 let req = HttpRequest::new_with_headers(
                                     &resolved.url,
                                     HttpMethod::Delete,
@@ -280,7 +275,8 @@ pub fn handle_collection(collection_name: &str, request_name: &str, verbose: boo
                                 execute_request_with_spinner(&req, &spinner_msg, verbose);
                             }
                             HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch => {
-                                let (headers, body, _is_form) = prepare_collection_headers_and_body(&resolved);
+                                let (headers, body, _is_form) =
+                                    prepare_collection_headers_and_body(&resolved);
                                 let req = HttpRequest::new_with_headers(
                                     &resolved.url,
                                     resolved.method.clone(),
@@ -295,7 +291,9 @@ pub fn handle_collection(collection_name: &str, request_name: &str, verbose: boo
                     Err(e) => eprintln!("Variable resolution error: {e}"),
                 },
                 None => {
-                    eprintln!("Request '{request_name}' not found in collection '{collection_name}'.");
+                    eprintln!(
+                        "Request '{request_name}' not found in collection '{collection_name}'."
+                    );
                 }
             }
         }
