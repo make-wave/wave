@@ -1,76 +1,117 @@
+//! Error handling for the wave HTTP client
+//!
+//! This module provides a comprehensive error type hierarchy for all failure modes
+//! in the wave application. All errors implement helpful `Display` messages and many
+//! provide actionable suggestions to help users resolve issues.
+//!
+//! The main [`WaveError`] enum unifies all possible errors, while specific error
+//! types like [`CollectionError`] and [`CliError`] provide detailed context for
+//! different failure domains.
+
 use std::fmt;
 use std::io;
 
 use crate::http_client::HttpError;
 
 /// Central error type for the wave application
+///
+/// Unifies all possible error conditions that can occur during wave execution.
+/// Each variant wraps a more specific error type that provides detailed context
+/// and user-friendly error messages.
+///
+/// # Examples
+/// ```
+/// use wave::error::WaveError;
+///
+/// // Errors automatically convert from specific types
+/// let result: Result<(), WaveError> = Err(wave::error::invalid_url("example.com"));
+///
+/// // All errors provide helpful messages
+/// if let Err(e) = result {
+///     println!("Error: {}", e);
+///     if let Some(suggestion) = e.suggestion() {
+///         println!("Suggestion: {}", suggestion);
+///     }
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub enum WaveError {
-    /// HTTP-related errors
+    /// HTTP-related errors from network requests
     Http(HttpError),
-    /// Collection/YAML errors
+    /// Collection/YAML file errors  
     Collection(CollectionError),
-    /// CLI argument parsing errors
+    /// CLI argument parsing and validation errors
     Cli(CliError),
-    /// I/O errors (file operations)
+    /// I/O errors from file system operations
     Io(String),
     /// JSON/YAML parsing errors
     Parse(ParseError),
-    /// Configuration errors
+    /// Configuration file errors
     Config(ConfigError),
-    /// Runtime/system errors
+    /// Runtime and system errors
     Runtime(String),
 }
 
 /// Collection and YAML related errors
+///
+/// Covers all error conditions related to loading, parsing, and using
+/// collection files and their associated operations.
 #[derive(Debug, Clone)]
 pub enum CollectionError {
-    /// Collection file not found
+    /// Collection file not found at specified path
     FileNotFound(String),
-    /// Invalid YAML content
+    /// Invalid YAML syntax or structure in collection file
     InvalidYaml(String),
-    /// Requested request not found in collection
+    /// Requested request name not found in collection
     RequestNotFound { collection: String, request: String },
-    /// Variable resolution failed
+    /// Variable resolution failed during collection processing
     VariableResolution(String),
-    /// Collection directory not found
+    /// Collection directory (.wave/) not found
     DirectoryNotFound(String),
 }
 
 /// CLI argument parsing and validation errors
+///
+/// Covers all error conditions related to command-line argument processing,
+/// URL validation, and parameter format checking.
 #[derive(Debug, Clone)]
 pub enum CliError {
-    /// Invalid URL format
+    /// URL format is invalid or malformed
     InvalidUrl(String),
-    /// Missing required arguments
+    /// Required command-line arguments are missing
     MissingArguments(String),
-    /// Invalid header format
+    /// Header parameter not in 'key:value' format
     InvalidHeaderFormat(String),
-    /// Invalid body format
+    /// Body parameter not in 'key=value' format
     InvalidBodyFormat(String),
-    /// Unsupported method
+    /// HTTP method is not supported
     UnsupportedMethod(String),
 }
 
 /// Parsing related errors
+///
+/// Covers errors that occur when parsing various data formats used
+/// throughout the application.
 #[derive(Debug, Clone)]
 pub enum ParseError {
-    /// JSON parsing error
+    /// JSON parsing or serialization error
     Json(String),
-    /// YAML parsing error
+    /// YAML parsing or serialization error
     Yaml(String),
-    /// Header parsing error
+    /// HTTP header parsing error
     Header(String),
     /// URL parsing error
     Url(String),
 }
 
 /// Configuration related errors
+///
+/// Covers errors related to application configuration files and settings.
 #[derive(Debug, Clone)]
 pub enum ConfigError {
-    /// Invalid configuration file
+    /// Configuration file is malformed or invalid
     InvalidConfig(String),
-    /// Missing configuration
+    /// Required configuration is missing
     MissingConfig(String),
 }
 
@@ -232,14 +273,32 @@ impl From<serde_json::Error> for WaveError {
 }
 
 impl WaveError {
-    /// Provides a helpful suggestion for how to fix the error
+    /// Provides actionable suggestions for resolving errors
+    ///
+    /// Returns helpful guidance for common error conditions that users
+    /// can act upon to resolve the issue.
+    ///
+    /// # Returns
+    /// `Some(suggestion)` for errors with actionable solutions, `None` for
+    /// errors that don't have clear user remediation steps.
+    ///
+    /// # Examples
+    /// ```
+    /// use wave::error::{WaveError, invalid_url};
+    ///
+    /// let err = invalid_url("example.com");
+    /// if let Some(suggestion) = err.suggestion() {
+    ///     println!("Try: {}", suggestion);
+    ///     // Prints: "Try: Example: wave get https://api.example.com/users"
+    /// }
+    /// ```
     pub fn suggestion(&self) -> Option<&str> {
         match self {
             WaveError::Collection(CollectionError::FileNotFound(_)) => {
-                Some("Run 'wave init' to create a new collection in the current directory")
+                Some("Make sure the file exists in the .wave directory")
             }
             WaveError::Collection(CollectionError::DirectoryNotFound(_)) => {
-                Some("Run 'wave init' to create a new collection in the current directory")
+                Some("No .wave directory found for collections")
             }
             WaveError::Collection(CollectionError::RequestNotFound { .. }) => {
                 Some("Check the collection YAML file to see all available requests")
@@ -258,17 +317,43 @@ impl WaveError {
     }
 }
 
-/// Helper function to create collection file not found error
+/// Creates a collection file not found error
+///
+/// # Arguments
+/// * `path` - The path to the missing collection file
+///
+/// # Examples
+/// ```
+/// use wave::error::collection_file_not_found;
+///
+/// let err = collection_file_not_found(".wave/api.yml");
+/// assert!(err.to_string().contains("Collection file not found"));
+/// ```
 pub fn collection_file_not_found(path: &str) -> WaveError {
     WaveError::Collection(CollectionError::FileNotFound(path.to_string()))
 }
 
-/// Helper function to create invalid URL error
+/// Creates an invalid URL error
+///
+/// # Arguments  
+/// * `url` - The invalid URL that was provided
+///
+/// # Examples
+/// ```
+/// use wave::error::invalid_url;
+///
+/// let err = invalid_url("not-a-url");
+/// assert!(err.to_string().contains("Invalid URL"));
+/// assert!(err.suggestion().is_some());
+/// ```
 pub fn invalid_url(url: &str) -> WaveError {
     WaveError::Cli(CliError::InvalidUrl(url.to_string()))
 }
 
-/// Helper function to create runtime error
+/// Creates a runtime error
+///
+/// # Arguments
+/// * `msg` - Description of the runtime error
 pub fn runtime_error(msg: &str) -> WaveError {
     WaveError::Runtime(msg.to_string())
 }
@@ -295,7 +380,7 @@ mod tests {
     fn test_wave_error_suggestion() {
         let err = WaveError::Collection(CollectionError::FileNotFound("test.yaml".to_string()));
         assert!(err.suggestion().is_some());
-        assert!(err.suggestion().unwrap().contains("wave init"));
+        assert!(err.suggestion().unwrap().contains(".wave directory"));
     }
 
     #[test]

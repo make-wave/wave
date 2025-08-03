@@ -213,7 +213,6 @@ where
     result
 }
 
-// New: Common HTTP execution logic
 pub async fn execute_request_with_spinner(
     req: &HttpRequest,
     spinner_msg: &str,
@@ -237,7 +236,6 @@ pub async fn handle_get(
     execute_request_with_spinner(&req, spinner_msg, verbose).await
 }
 
-// Consolidated handler for POST/PUT/PATCH methods with body data
 pub async fn handle_method_with_body(
     method: HttpMethod,
     url: &str,

@@ -1,3 +1,8 @@
+//! Collection management for wave HTTP client
+//!
+//! This module provides functionality for loading and managing collections of HTTP requests
+//! from YAML files, including variable resolution and request parsing.
+
 use crate::http_client::HttpMethod;
 use serde::de::{self, Deserializer, MapAccess, Visitor};
 use serde::Deserialize;
@@ -6,6 +11,28 @@ use std::fmt;
 use std::fs;
 
 /// Converts a serde_yaml::Value to serde_json::Value for YAML-to-JSON conversion
+///
+/// This utility function handles the conversion between YAML and JSON value types,
+/// preserving the structure and data while translating between the two formats.
+/// Used internally when processing request bodies that contain YAML values.
+///
+/// # Examples
+///
+/// ```
+/// use wave::collection::yaml_to_json;
+/// use serde_yaml::Value as YamlValue;
+/// use serde_json::Value as JsonValue;
+///
+/// // Convert a YAML string to JSON
+/// let yaml_val = YamlValue::String("hello".to_string());
+/// let json_val = yaml_to_json(&yaml_val);
+/// assert_eq!(json_val, JsonValue::String("hello".to_string()));
+///
+/// // Convert a YAML number to JSON
+/// let yaml_num = YamlValue::Number(serde_yaml::Number::from(42));
+/// let json_num = yaml_to_json(&yaml_num);
+/// assert_eq!(json_num, JsonValue::Number(42.into()));
+/// ```
 pub fn yaml_to_json(val: &serde_yaml::Value) -> serde_json::Value {
     match val {
         serde_yaml::Value::Null => serde_json::Value::Null,
@@ -40,18 +67,34 @@ pub fn yaml_to_json(val: &serde_yaml::Value) -> serde_json::Value {
     }
 }
 
+/// A collection of HTTP requests with optional variable definitions
+///
+/// Collections are loaded from YAML files and contain reusable HTTP requests
+/// along with variables that can be referenced within those requests.
 #[derive(Debug, Deserialize)]
 pub struct Collection {
+    /// Variables defined in the collection file that can be referenced in requests
     pub variables: Option<HashMap<String, String>>,
+    /// List of HTTP requests in this collection
     pub requests: Vec<Request>,
 }
 
+/// An HTTP request definition from a collection file
+///
+/// Represents a single HTTP request with all its components including method,
+/// URL, headers, and optional body. Variables in any field can be resolved
+/// using collection variables or environment variables.
 #[derive(Debug)]
 pub struct Request {
+    /// Human-readable name for the request
     pub name: String,
+    /// HTTP method (GET, POST, PUT, etc.)
     pub method: HttpMethod,
+    /// Target URL (may contain variables)
     pub url: String,
+    /// Optional HTTP headers
     pub headers: Option<HashMap<String, String>>,
+    /// Optional request body (JSON or form data)
     pub body: Option<Body>, // Body is now validated for mutual exclusivity
 }
 
@@ -85,9 +128,15 @@ impl<'de> Deserialize<'de> for Request {
     }
 }
 
+/// HTTP request body types supported in collections
+///
+/// Request bodies can be either JSON objects or form data. The YAML parser
+/// enforces mutual exclusivity - only one body type can be specified per request.
 #[derive(Debug)]
 pub enum Body {
+    /// JSON object body (key-value pairs with YAML values)
     Json(HashMap<String, serde_yaml::Value>),
+    /// Form data body (key-value string pairs)
     Form(HashMap<String, String>),
 }
 
@@ -141,6 +190,28 @@ impl<'de> Deserialize<'de> for Body {
     }
 }
 
+/// Loads a collection from a YAML file
+///
+/// Reads and parses a YAML file containing HTTP request collection definitions.
+/// The file should contain a `variables` section (optional) and a `requests` section.
+///
+/// # Arguments
+///
+/// * `path` - Path to the YAML collection file
+///
+/// # Returns
+///
+/// Returns the parsed collection or an error if the file cannot be read or parsed.
+///
+/// # Examples
+///
+/// ```no_run
+/// use wave::collection::load_collection;
+///
+/// let collection = load_collection(".wave/api.yaml")?;
+/// println!("Loaded {} requests", collection.requests.len());
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 /// Load collection and parse yaml collection
 pub fn load_collection(path: &str) -> Result<Collection, Box<dyn std::error::Error>> {
     let content = fs::read_to_string(path)?;
@@ -148,6 +219,34 @@ pub fn load_collection(path: &str) -> Result<Collection, Box<dyn std::error::Err
     Ok(coll)
 }
 
+/// Resolves variables in a string using file-defined and environment variables
+///
+/// Processes variable references in the format `${variable_name}` or `${env:ENV_VAR}`.
+/// File variables are resolved from the provided HashMap, while environment variables
+/// are resolved from the system environment using the `env:` prefix.
+///
+/// # Arguments
+///
+/// * `input` - String that may contain variable references
+/// * `file_vars` - Collection variables from the YAML file
+///
+/// # Returns
+///
+/// Returns the string with all variables resolved, or an error if any variable is missing.
+///
+/// # Examples
+///
+/// ```
+/// use std::collections::HashMap;
+/// use wave::collection::resolve_vars;
+///
+/// let mut vars = HashMap::new();
+/// vars.insert("api_host".to_string(), "api.example.com".to_string());
+///
+/// let result = resolve_vars("https://${api_host}/users", &vars)?;
+/// assert_eq!(result, "https://api.example.com/users");
+/// # Ok::<(), String>(())
+/// ```
 /// Resolves variables in a string using file-defined and environment variables.
 pub fn resolve_vars(input: &str, file_vars: &HashMap<String, String>) -> Result<String, String> {
     let mut result = String::new();
@@ -182,6 +281,20 @@ pub fn resolve_vars(input: &str, file_vars: &HashMap<String, String>) -> Result<
     Ok(result)
 }
 
+/// Recursively resolves variables in all request fields
+///
+/// Creates a new Request with all variable references resolved in the URL, headers,
+/// and body fields. This is used when executing requests from collections to ensure
+/// all placeholders are replaced with actual values.
+///
+/// # Arguments
+///
+/// * `req` - The request to resolve variables in
+/// * `file_vars` - Collection variables from the YAML file
+///
+/// # Returns
+///
+/// Returns a new Request with resolved variables, or an error if any variable is missing.
 /// Recursively resolves variables in all request fields
 pub fn resolve_request_vars(
     req: &Request,
