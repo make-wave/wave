@@ -4,7 +4,7 @@ pub mod http_client;
 pub mod printer;
 
 use clap::{Parser, Subcommand};
-use error::{WaveError, CliError, CollectionError};
+use error::{CliError, CollectionError, WaveError};
 use http_client::{Client, HttpMethod, HttpRequest, RequestBody, ReqwestBackend};
 use std::collections::HashMap;
 
@@ -107,17 +107,17 @@ pub fn parse_params(params: &[String]) -> HeaderDataTuple {
 pub fn validate_params(params: &[String]) -> Result<HeaderDataTuple, WaveError> {
     let mut headers = Vec::new();
     let mut data = Vec::new();
-    
+
     for param in params {
         // Ignore --form if present in params
         if param == "--form" {
             continue;
         }
-        
+
         if let Some((k, v)) = param.split_once(':') {
             let key = k.trim();
             let value = v.trim();
-            
+
             // Validate header format
             if key.is_empty() {
                 return Err(WaveError::Cli(CliError::InvalidHeaderFormat(param.clone())));
@@ -125,17 +125,17 @@ pub fn validate_params(params: &[String]) -> Result<HeaderDataTuple, WaveError> 
             if key.contains(' ') {
                 return Err(WaveError::Cli(CliError::InvalidHeaderFormat(param.clone())));
             }
-            
+
             headers.push((key.to_string(), value.to_string()));
         } else if let Some((k, v)) = param.split_once('=') {
             let key = k.trim();
             let value = v.trim();
-            
+
             // Validate body data format
             if key.is_empty() {
                 return Err(WaveError::Cli(CliError::InvalidBodyFormat(param.clone())));
             }
-            
+
             data.push((key.to_string(), value.to_string()));
         } else {
             // Parameter doesn't match either format
@@ -144,28 +144,30 @@ pub fn validate_params(params: &[String]) -> Result<HeaderDataTuple, WaveError> 
             ))));
         }
     }
-    
+
     Ok((headers, data))
 }
 
 /// Validates URL format
 pub fn validate_url(url: &str) -> Result<String, WaveError> {
     if url.trim().is_empty() {
-        return Err(WaveError::Cli(CliError::InvalidUrl("URL cannot be empty".to_string())));
+        return Err(WaveError::Cli(CliError::InvalidUrl(
+            "URL cannot be empty".to_string(),
+        )));
     }
-    
+
     // Add scheme if missing
     let url_with_scheme = if url.starts_with("http://") || url.starts_with("https://") {
         url.to_string()
     } else {
         format!("http://{url}")
     };
-    
+
     // Basic URL validation
     if !url_with_scheme.contains('.') {
         return Err(WaveError::Cli(CliError::InvalidUrl(url.to_string())));
     }
-    
+
     Ok(url_with_scheme)
 }
 
@@ -189,12 +191,12 @@ where
     let pb = ProgressBar::new_spinner();
     pb.set_message(message.to_string());
     pb.enable_steady_tick(Duration::from_millis(100));
-    
+
     // Try to set a fancy template, fall back to simple spinner if it fails
     let style_result = ProgressStyle::default_spinner()
         .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
         .template("{spinner} {msg}");
-    
+
     match style_result {
         Ok(style) => pb.set_style(style),
         Err(_) => {
@@ -202,14 +204,18 @@ where
             pb.set_style(ProgressStyle::default_spinner());
         }
     }
-    
+
     let result = f();
     pb.finish_and_clear();
     result
 }
 
 // New: Common HTTP execution logic
-pub fn execute_request_with_spinner(req: &HttpRequest, spinner_msg: &str, verbose: bool) -> Result<(), WaveError> {
+pub fn execute_request_with_spinner(
+    req: &HttpRequest,
+    spinner_msg: &str,
+    verbose: bool,
+) -> Result<(), WaveError> {
     let client = Client::new(ReqwestBackend);
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| WaveError::Runtime(format!("Failed to create async runtime: {e}")))?;
@@ -219,7 +225,12 @@ pub fn execute_request_with_spinner(req: &HttpRequest, spinner_msg: &str, verbos
     Ok(())
 }
 
-pub fn handle_get(url: &str, params: &[String], verbose: bool, spinner_msg: &str) -> Result<(), WaveError> {
+pub fn handle_get(
+    url: &str,
+    params: &[String],
+    verbose: bool,
+    spinner_msg: &str,
+) -> Result<(), WaveError> {
     let url = validate_url(url)?;
     let (headers, _) = validate_params(params)?;
     let req = HttpRequest::new_with_headers(&url, HttpMethod::Get, None, headers);
@@ -251,19 +262,42 @@ pub fn handle_method_with_body(
     execute_request_with_spinner(&req, spinner_msg, verbose)
 }
 
-pub fn handle_post(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) -> Result<(), WaveError> {
+pub fn handle_post(
+    url: &str,
+    params: &[String],
+    form: bool,
+    verbose: bool,
+    spinner_msg: &str,
+) -> Result<(), WaveError> {
     handle_method_with_body(HttpMethod::Post, url, params, form, verbose, spinner_msg)
 }
 
-pub fn handle_put(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) -> Result<(), WaveError> {
+pub fn handle_put(
+    url: &str,
+    params: &[String],
+    form: bool,
+    verbose: bool,
+    spinner_msg: &str,
+) -> Result<(), WaveError> {
     handle_method_with_body(HttpMethod::Put, url, params, form, verbose, spinner_msg)
 }
 
-pub fn handle_patch(url: &str, params: &[String], form: bool, verbose: bool, spinner_msg: &str) -> Result<(), WaveError> {
+pub fn handle_patch(
+    url: &str,
+    params: &[String],
+    form: bool,
+    verbose: bool,
+    spinner_msg: &str,
+) -> Result<(), WaveError> {
     handle_method_with_body(HttpMethod::Patch, url, params, form, verbose, spinner_msg)
 }
 
-pub fn handle_delete(url: &str, params: &[String], verbose: bool, spinner_msg: &str) -> Result<(), WaveError> {
+pub fn handle_delete(
+    url: &str,
+    params: &[String],
+    verbose: bool,
+    spinner_msg: &str,
+) -> Result<(), WaveError> {
     let url = validate_url(url)?;
     let (headers, _) = validate_params(params)?;
     let req = HttpRequest::new_with_headers(&url, HttpMethod::Delete, None, headers);
@@ -316,7 +350,11 @@ fn prepare_collection_headers_and_body(
     }
 }
 
-pub fn handle_collection(collection_name: &str, request_name: &str, verbose: bool) -> Result<(), WaveError> {
+pub fn handle_collection(
+    collection_name: &str,
+    request_name: &str,
+    verbose: bool,
+) -> Result<(), WaveError> {
     let yaml_path = format!(".wave/{collection_name}.yaml");
     let yml_path = format!(".wave/{collection_name}.yml");
     let coll_result =
@@ -363,10 +401,18 @@ pub fn handle_collection(collection_name: &str, request_name: &str, verbose: boo
                                 );
                                 execute_request_with_spinner(&req, &spinner_msg, verbose)?;
                             }
-                            _ => return Err(WaveError::Cli(CliError::UnsupportedMethod(resolved.method.to_string()))),
+                            _ => {
+                                return Err(WaveError::Cli(CliError::UnsupportedMethod(
+                                    resolved.method.to_string(),
+                                )))
+                            }
                         }
                     }
-                    Err(e) => return Err(WaveError::Collection(CollectionError::VariableResolution(e.to_string()))),
+                    Err(e) => {
+                        return Err(WaveError::Collection(CollectionError::VariableResolution(
+                            e.to_string(),
+                        )))
+                    }
                 },
                 None => {
                     return Err(WaveError::Collection(CollectionError::RequestNotFound {
@@ -376,7 +422,11 @@ pub fn handle_collection(collection_name: &str, request_name: &str, verbose: boo
                 }
             }
         }
-        Err(_e) => return Err(WaveError::Collection(CollectionError::FileNotFound(format!("{collection_name}.yaml or {collection_name}.yml")))),
+        Err(_e) => {
+            return Err(WaveError::Collection(CollectionError::FileNotFound(
+                format!("{collection_name}.yaml or {collection_name}.yml"),
+            )))
+        }
     }
     Ok(())
 }
@@ -427,14 +477,23 @@ mod tests {
 
     #[test]
     fn test_validate_url_with_scheme() {
-        assert_eq!(validate_url("https://example.com").unwrap(), "https://example.com");
-        assert_eq!(validate_url("http://example.com").unwrap(), "http://example.com");
+        assert_eq!(
+            validate_url("https://example.com").unwrap(),
+            "https://example.com"
+        );
+        assert_eq!(
+            validate_url("http://example.com").unwrap(),
+            "http://example.com"
+        );
     }
 
     #[test]
     fn test_validate_url_adds_scheme() {
         assert_eq!(validate_url("example.com").unwrap(), "http://example.com");
-        assert_eq!(validate_url("api.example.com").unwrap(), "http://api.example.com");
+        assert_eq!(
+            validate_url("api.example.com").unwrap(),
+            "http://api.example.com"
+        );
     }
 
     #[test]
@@ -457,11 +516,17 @@ mod tests {
             "age=42".to_string(),
         ];
         let result = validate_params(&params).unwrap();
-        assert_eq!(result.0, vec![("Authorization".to_string(), "Bearer123".to_string())]);
-        assert_eq!(result.1, vec![
-            ("name".to_string(), "joe".to_string()),
-            ("age".to_string(), "42".to_string())
-        ]);
+        assert_eq!(
+            result.0,
+            vec![("Authorization".to_string(), "Bearer123".to_string())]
+        );
+        assert_eq!(
+            result.1,
+            vec![
+                ("name".to_string(), "joe".to_string()),
+                ("age".to_string(), "42".to_string())
+            ]
+        );
     }
 
     #[test]
@@ -493,10 +558,10 @@ mod tests {
         // Test that validation errors propagate through the handle functions
         let result = handle_get("", &[], false, "test");
         assert!(result.is_err());
-        
+
         let result = handle_get("localhost", &["invalid-param".to_string()], false, "test");
         assert!(result.is_err());
-        
+
         let result = handle_get("example.com", &[":empty-key".to_string()], false, "test");
         assert!(result.is_err());
     }
@@ -516,15 +581,15 @@ mod tests {
         // Empty values should be allowed
         assert!(validate_params(&["key:".to_string()]).is_ok());
         assert!(validate_params(&["key=".to_string()]).is_ok());
-        
+
         // Special characters in values should be allowed
         assert!(validate_params(&["Authorization:Bearer token=with=equals".to_string()]).is_ok());
         assert!(validate_params(&["data=value:with:colons".to_string()]).is_ok());
-        
+
         // Multiple equals/colons - only first one is used as separator
         let result = validate_params(&["key=value=more".to_string()]).unwrap();
         assert_eq!(result.1[0].1, "value=more");
-        
+
         let result = validate_params(&["key:value:more".to_string()]).unwrap();
         assert_eq!(result.0[0].1, "value:more");
     }

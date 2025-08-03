@@ -97,7 +97,10 @@ impl fmt::Display for CollectionError {
             CollectionError::InvalidYaml(msg) => {
                 write!(f, "Invalid YAML in collection file: {msg}")
             }
-            CollectionError::RequestNotFound { collection, request } => {
+            CollectionError::RequestNotFound {
+                collection,
+                request,
+            } => {
                 write!(f, "Request '{request}' not found in collection '{collection}'. Check the collection YAML file to see available requests.")
             }
             CollectionError::VariableResolution(msg) => {
@@ -114,16 +117,25 @@ impl fmt::Display for CliError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CliError::InvalidUrl(url) => {
-                write!(f, "Invalid URL '{url}'. URLs must include protocol (http:// or https://)")
+                write!(
+                    f,
+                    "Invalid URL '{url}'. URLs must include protocol (http:// or https://)"
+                )
             }
             CliError::MissingArguments(msg) => {
                 write!(f, "Missing required arguments: {msg}")
             }
             CliError::InvalidHeaderFormat(header) => {
-                write!(f, "Invalid header format '{header}'. Headers must be in 'key:value' format")
+                write!(
+                    f,
+                    "Invalid header format '{header}'. Headers must be in 'key:value' format"
+                )
             }
             CliError::InvalidBodyFormat(body) => {
-                write!(f, "Invalid body format '{body}'. Body data must be in 'key=value' format")
+                write!(
+                    f,
+                    "Invalid body format '{body}'. Body data must be in 'key=value' format"
+                )
             }
             CliError::UnsupportedMethod(method) => {
                 write!(f, "Unsupported HTTP method: '{method}'. Supported methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS")
@@ -301,7 +313,8 @@ mod tests {
         assert!(wave_err.to_string().contains("I/O error"));
 
         // Test YAML error by parsing invalid YAML
-        let yaml_result: Result<serde_yaml::Value, serde_yaml::Error> = serde_yaml::from_str("invalid: yaml: content:");
+        let yaml_result: Result<serde_yaml::Value, serde_yaml::Error> =
+            serde_yaml::from_str("invalid: yaml: content:");
         if let Err(yaml_err) = yaml_result {
             let wave_err: WaveError = yaml_err.into();
             assert!(wave_err.to_string().contains("YAML parsing error"));
@@ -329,20 +342,47 @@ mod tests {
     #[test]
     fn test_suggestion_coverage() {
         let suggestions = vec![
-            (WaveError::Collection(CollectionError::FileNotFound("test.yaml".to_string())), true),
-            (WaveError::Collection(CollectionError::DirectoryNotFound("test".to_string())), true),
-            (WaveError::Collection(CollectionError::RequestNotFound { collection: "test".to_string(), request: "req".to_string() }), true),
-            (WaveError::Cli(CliError::InvalidUrl("bad-url".to_string())), true),
-            (WaveError::Cli(CliError::InvalidHeaderFormat("bad:header".to_string())), true),
-            (WaveError::Cli(CliError::InvalidBodyFormat("bad=body".to_string())), true),
+            (
+                WaveError::Collection(CollectionError::FileNotFound("test.yaml".to_string())),
+                true,
+            ),
+            (
+                WaveError::Collection(CollectionError::DirectoryNotFound("test".to_string())),
+                true,
+            ),
+            (
+                WaveError::Collection(CollectionError::RequestNotFound {
+                    collection: "test".to_string(),
+                    request: "req".to_string(),
+                }),
+                true,
+            ),
+            (
+                WaveError::Cli(CliError::InvalidUrl("bad-url".to_string())),
+                true,
+            ),
+            (
+                WaveError::Cli(CliError::InvalidHeaderFormat("bad:header".to_string())),
+                true,
+            ),
+            (
+                WaveError::Cli(CliError::InvalidBodyFormat("bad=body".to_string())),
+                true,
+            ),
             (WaveError::Runtime("runtime error".to_string()), false),
         ];
 
         for (err, should_have_suggestion) in suggestions {
             if should_have_suggestion {
-                assert!(err.suggestion().is_some(), "Error should have suggestion: {err}");
+                assert!(
+                    err.suggestion().is_some(),
+                    "Error should have suggestion: {err}"
+                );
             } else {
-                assert!(err.suggestion().is_none(), "Error should not have suggestion: {err}");
+                assert!(
+                    err.suggestion().is_none(),
+                    "Error should not have suggestion: {err}"
+                );
             }
         }
     }

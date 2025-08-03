@@ -223,7 +223,10 @@ mod tests {
     #[test]
     fn test_format_headers_verbose() {
         let mut headers = HeaderMap::new();
-        headers.insert("content-type", http::HeaderValue::from_static("application/json"));
+        headers.insert(
+            "content-type",
+            http::HeaderValue::from_static("application/json"),
+        );
 
         let resp = HttpResponse {
             status: 200,
@@ -254,7 +257,10 @@ mod tests {
     #[test]
     fn test_format_headers_on_error_status() {
         let mut headers = HeaderMap::new();
-        headers.insert("content-type", http::HeaderValue::from_static("application/json"));
+        headers.insert(
+            "content-type",
+            http::HeaderValue::from_static("application/json"),
+        );
         headers.insert("x-error", http::HeaderValue::from_static("Not Found"));
 
         let resp = HttpResponse {

@@ -265,9 +265,14 @@ requests:
         path.push("test_wave_collection.yaml");
         fs::write(&path, yaml).expect("Test: Write test file");
         env::set_var("TEST_TOKEN", "secret123");
-        let coll = load_collection(path.to_str().expect("Test: Valid path")).expect("Test: Load collection");
+        let coll = load_collection(path.to_str().expect("Test: Valid path"))
+            .expect("Test: Load collection");
         let file_vars = coll.variables.clone().expect("Test: Variables exist");
-        let req = coll.requests.iter().find(|r| r.name == "Get User").expect("Test: Find request");
+        let req = coll
+            .requests
+            .iter()
+            .find(|r| r.name == "Get User")
+            .expect("Test: Find request");
         let resolved = resolve_request_vars(req, &file_vars).expect("Test: Resolve variables");
         assert_eq!(resolved.url, "https://api.example.com/users/42");
         assert_eq!(
@@ -280,7 +285,12 @@ requests:
             "Bearer secret123"
         );
         assert_eq!(
-            resolved.headers.as_ref().expect("Test: Headers exist").get("Accept").expect("Test: Accept header exists"),
+            resolved
+                .headers
+                .as_ref()
+                .expect("Test: Headers exist")
+                .get("Accept")
+                .expect("Test: Accept header exists"),
             "application/json"
         );
     }

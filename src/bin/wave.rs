@@ -1,7 +1,7 @@
 use clap::Parser;
 use wave::{
-    error::WaveError,
-    handle_collection, handle_delete, handle_get, handle_patch, handle_post, handle_put, Cli,
+    error::WaveError, handle_collection, handle_delete, handle_get, handle_patch, handle_post,
+    handle_put, Cli,
 };
 
 fn spinner_msg(method: &str, url: &str, params: &[String]) -> String {

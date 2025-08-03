@@ -590,15 +590,38 @@ mod tests {
     #[test]
     fn test_http_method_from_str() {
         // Test: Valid method parsing - unwrap is safe for known valid strings
-        assert_eq!("GET".parse::<HttpMethod>().expect("Test: Valid GET"), HttpMethod::Get);
-        assert_eq!("get".parse::<HttpMethod>().expect("Test: Valid get"), HttpMethod::Get);
-        assert_eq!("POST".parse::<HttpMethod>().expect("Test: Valid POST"), HttpMethod::Post);
-        assert_eq!("put".parse::<HttpMethod>().expect("Test: Valid put"), HttpMethod::Put);
-        assert_eq!("DELETE".parse::<HttpMethod>().expect("Test: Valid DELETE"), HttpMethod::Delete);
-        assert_eq!("patch".parse::<HttpMethod>().expect("Test: Valid patch"), HttpMethod::Patch);
-        assert_eq!("HEAD".parse::<HttpMethod>().expect("Test: Valid HEAD"), HttpMethod::Head);
         assert_eq!(
-            "options".parse::<HttpMethod>().expect("Test: Valid options"),
+            "GET".parse::<HttpMethod>().expect("Test: Valid GET"),
+            HttpMethod::Get
+        );
+        assert_eq!(
+            "get".parse::<HttpMethod>().expect("Test: Valid get"),
+            HttpMethod::Get
+        );
+        assert_eq!(
+            "POST".parse::<HttpMethod>().expect("Test: Valid POST"),
+            HttpMethod::Post
+        );
+        assert_eq!(
+            "put".parse::<HttpMethod>().expect("Test: Valid put"),
+            HttpMethod::Put
+        );
+        assert_eq!(
+            "DELETE".parse::<HttpMethod>().expect("Test: Valid DELETE"),
+            HttpMethod::Delete
+        );
+        assert_eq!(
+            "patch".parse::<HttpMethod>().expect("Test: Valid patch"),
+            HttpMethod::Patch
+        );
+        assert_eq!(
+            "HEAD".parse::<HttpMethod>().expect("Test: Valid HEAD"),
+            HttpMethod::Head
+        );
+        assert_eq!(
+            "options"
+                .parse::<HttpMethod>()
+                .expect("Test: Valid options"),
             HttpMethod::Options
         );
 
@@ -1024,7 +1047,10 @@ mod tests {
     #[test]
     fn test_response_is_json() {
         let mut headers_json = HeaderMap::new();
-        headers_json.insert("content-type", http::HeaderValue::from_static("application/json"));
+        headers_json.insert(
+            "content-type",
+            http::HeaderValue::from_static("application/json"),
+        );
 
         let mut headers_json_charset = HeaderMap::new();
         headers_json_charset.insert(
