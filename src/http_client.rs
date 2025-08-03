@@ -1,18 +1,27 @@
 use async_trait::async_trait;
 use http::HeaderMap;
-use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
-/// HTTP methods supported by the client
+/// HTTP methods supported by the wave client
+///
+/// All standard HTTP methods commonly used in REST APIs and web development.
+/// Each method has specific semantics according to HTTP specifications.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HttpMethod {
+    /// GET - Retrieve data (safe, idempotent)
     Get,
+    /// POST - Create or submit data (not idempotent)
     Post,
+    /// PUT - Update or create data (idempotent)
     Put,
+    /// DELETE - Remove data (idempotent)
     Delete,
+    /// PATCH - Partial update (not idempotent)
     Patch,
+    /// HEAD - Retrieve headers only (safe, idempotent)
     Head,
+    /// OPTIONS - Query supported methods (safe, idempotent)
     Options,
 }
 
@@ -48,6 +57,9 @@ impl FromStr for HttpMethod {
 }
 
 /// Custom error types for HTTP operations
+///
+/// Represents various failure modes that can occur during HTTP requests,
+/// from network connectivity issues to parsing problems.
 #[derive(Debug, Clone)]
 pub enum HttpError {
     /// Network-related errors (connection failed, timeout, etc.)
@@ -75,17 +87,61 @@ impl fmt::Display for HttpError {
 
 impl std::error::Error for HttpError {}
 
-/// Represents different types of request bodies
+/// Represents different types of request bodies with automatic serialization
+///
+/// Provides type-safe handling of various request body formats with automatic
+/// Content-Type header management and proper encoding for each format.
+///
+/// # Examples
+///
+/// ```
+/// use wave::http_client::RequestBody;
+/// use std::collections::HashMap;
+///
+/// // JSON body
+/// let mut data = HashMap::new();
+/// data.insert("name", "Alice");
+/// let json_body = RequestBody::json(&data)?;
+///
+/// // Form data
+/// let form_data = vec![("username".to_string(), "alice".to_string())];
+/// let form_body = RequestBody::form(form_data);
+///
+/// // Plain text
+/// let text_body = RequestBody::text("Hello, world!".to_string());
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Debug, Clone)]
 pub enum RequestBody {
+    /// JSON object body - automatically sets Content-Type to application/json
     Json(serde_json::Value),
+    /// Form-encoded body - automatically sets Content-Type to application/x-www-form-urlencoded
     Form(Vec<(String, String)>),
+    /// Plain text body - automatically sets Content-Type to text/plain
     Text(String),
+    /// Binary data body - automatically sets Content-Type to application/octet-stream
     Bytes(Vec<u8>),
 }
 
 impl RequestBody {
     /// Create a JSON body from any serializable type
+    ///
+    /// Converts any type implementing `serde::Serialize` into a JSON request body.
+    /// This is the recommended way to send structured data to APIs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wave::http_client::RequestBody;
+    /// use std::collections::HashMap;
+    ///
+    /// let mut data = HashMap::new();
+    /// data.insert("username", "alice");
+    /// data.insert("email", "alice@example.com");
+    ///
+    /// let body = RequestBody::json(&data)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn json<T: serde::Serialize>(data: &T) -> Result<Self, HttpError> {
         let value = serde_json::to_value(data)
             .map_err(|e| HttpError::Parse(format!("Failed to serialize JSON: {e}")))?;
@@ -93,21 +149,44 @@ impl RequestBody {
     }
 
     /// Create a form-encoded body
+    ///
+    /// Creates a URL-encoded form body suitable for HTML form submissions.
+    /// Automatically handles URL encoding of keys and values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wave::http_client::RequestBody;
+    ///
+    /// let form_data = vec![
+    ///     ("username".to_string(), "alice".to_string()),
+    ///     ("password".to_string(), "secret123".to_string()),
+    /// ];
+    /// let body = RequestBody::form(form_data);
+    /// ```
     pub fn form(data: Vec<(String, String)>) -> Self {
         RequestBody::Form(data)
     }
 
     /// Create a plain text body
+    ///
+    /// For sending plain text content such as logs, notes, or simple data.
     pub fn text(data: String) -> Self {
         RequestBody::Text(data)
     }
 
     /// Create a binary body
+    ///
+    /// For sending binary data such as images, files, or other non-text content.
     pub fn bytes(data: Vec<u8>) -> Self {
         RequestBody::Bytes(data)
     }
 
     /// Serialize the body to a string and set appropriate Content-Type header
+    ///
+    /// Converts the body to its wire format and automatically sets the correct
+    /// Content-Type header based on the body type. This method is used internally
+    /// when building HTTP requests.
     pub fn serialize(&self, headers: &mut HeaderMap) -> String {
         match self {
             RequestBody::Json(value) => {
@@ -141,6 +220,27 @@ impl RequestBody {
 }
 
 /// Builder for constructing HTTP requests with a fluent API
+///
+/// Provides a convenient way to build complex HTTP requests step by step.
+/// The builder automatically handles header management and body serialization.
+///
+/// # Examples
+///
+/// ```
+/// use wave::http_client::{RequestBuilder, RequestBody, HttpMethod};
+/// use std::collections::HashMap;
+///
+/// let mut user_data = HashMap::new();
+/// user_data.insert("name", "Alice");
+/// user_data.insert("email", "alice@example.com");
+///
+/// let request = RequestBuilder::new("https://api.example.com/users", HttpMethod::Post)
+///     .header("Authorization", "Bearer token123")
+///     .header("Accept", "application/json")
+///     .body(RequestBody::json(&user_data)?)
+///     .build();
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Debug)]
 pub struct RequestBuilder {
     url: String,
@@ -151,6 +251,9 @@ pub struct RequestBuilder {
 
 impl RequestBuilder {
     /// Create a new request builder
+    ///
+    /// Initializes a builder with the specified URL and HTTP method.
+    /// Additional configuration can be added using the fluent API methods.
     pub fn new(url: impl Into<String>, method: HttpMethod) -> Self {
         Self {
             url: url.into(),
@@ -161,6 +264,9 @@ impl RequestBuilder {
     }
 
     /// Add a header to the request
+    ///
+    /// Sets a single header key-value pair. If the header already exists,
+    /// it will be replaced with the new value.
     pub fn header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         let key_str = key.into();
         let value_str = value.into();
@@ -192,37 +298,40 @@ impl RequestBuilder {
         self
     }
 
-    /// Set a JSON body from any serializable type
-    pub fn json_body<T: serde::Serialize>(mut self, data: &T) -> Result<Self, HttpError> {
-        self.body = Some(RequestBody::json(data)?);
-        Ok(self)
-    }
-
-    /// Set a form-encoded body
-    pub fn form_body(mut self, data: Vec<(String, String)>) -> Self {
-        self.body = Some(RequestBody::form(data));
-        self
-    }
-
-    /// Set a plain text body
-    pub fn text_body(mut self, data: String) -> Self {
-        self.body = Some(RequestBody::text(data));
-        self
-    }
-
-    /// Set a binary body
-    pub fn bytes_body(mut self, data: Vec<u8>) -> Self {
-        self.body = Some(RequestBody::bytes(data));
-        self
-    }
-
-    /// Set a raw body (for backward compatibility or custom handling)
-    pub fn raw_body(mut self, data: String) -> Self {
-        self.body = Some(RequestBody::text(data));
+    /// Set the request body
+    ///
+    /// Sets the request body using a `RequestBody` instance. Use `RequestBody` static methods
+    /// to create the appropriate body type (JSON, form, text, or binary).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wave::http_client::{RequestBuilder, RequestBody, HttpMethod};
+    /// use std::collections::HashMap;
+    ///
+    /// // JSON body
+    /// let mut data = HashMap::new();
+    /// data.insert("name", "Alice");
+    /// let request = RequestBuilder::new("https://api.example.com/users", HttpMethod::Post)
+    ///     .body(RequestBody::json(&data)?)
+    ///     .build();
+    ///
+    /// // Form body
+    /// let form_data = vec![("username".to_string(), "alice".to_string())];
+    /// let request2 = RequestBuilder::new("https://api.example.com/login", HttpMethod::Post)
+    ///     .body(RequestBody::form(form_data))
+    ///     .build();
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn body(mut self, body: RequestBody) -> Self {
+        self.body = Some(body);
         self
     }
 
     /// Build the final HttpRequest
+    ///
+    /// Consumes the builder and produces an `HttpRequest` ready to be sent.
+    /// This method handles final serialization of the body and header setup.
     pub fn build(self) -> HttpRequest {
         let mut headers = self.headers;
         let body = self.body.map(|b| b.serialize(&mut headers));
@@ -236,11 +345,36 @@ impl RequestBuilder {
     }
 }
 
-/// Represents an HTTP response.
+/// Represents an HTTP response with status, headers, and body
+///
+/// Contains all the information returned by an HTTP server, including utilities
+/// for parsing common response formats and checking status codes.
+///
+/// # Examples
+///
+/// ```
+/// use wave::http_client::HttpResponse;
+/// use http::HeaderMap;
+///
+/// let mut headers = HeaderMap::new();
+/// headers.insert("content-type", "application/json".parse().unwrap());
+///
+/// let response = HttpResponse {
+///     status: 200,
+///     headers,
+///     body: r#"{"message": "success"}"#.to_string(),
+/// };
+///
+/// assert!(response.is_success());
+/// assert!(response.is_json());
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct HttpResponse {
+    /// HTTP status code (200, 404, 500, etc.)
     pub status: u16,
+    /// Response headers
     pub headers: HeaderMap,
+    /// Response body as string
     pub body: String,
 }
 
@@ -273,6 +407,33 @@ impl HttpResponse {
     }
 
     /// Parse the response body as JSON
+    ///
+    /// Attempts to deserialize the response body into the specified type.
+    /// Returns an error if the body is not valid JSON or doesn't match the expected structure.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wave::http_client::HttpResponse;
+    /// use serde::Deserialize;
+    /// use http::HeaderMap;
+    ///
+    /// #[derive(Deserialize)]
+    /// struct User {
+    ///     name: String,
+    ///     email: String,
+    /// }
+    ///
+    /// let response = HttpResponse {
+    ///     status: 200,
+    ///     headers: HeaderMap::new(),
+    ///     body: r#"{"name": "Alice", "email": "alice@example.com"}"#.to_string(),
+    /// };
+    ///
+    /// let user: User = response.json()?;
+    /// assert_eq!(user.name, "Alice");
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn json<T: serde::de::DeserializeOwned>(&self) -> Result<T, HttpError> {
         serde_json::from_str(&self.body)
             .map_err(|e| HttpError::Parse(format!("Failed to parse JSON response: {e}")))
@@ -291,17 +452,66 @@ impl HttpResponse {
     }
 }
 
-/// Represents an HTTP request.
+/// Represents an HTTP request with method, URL, headers, and optional body
+///
+/// The core request type used throughout the wave HTTP client. Can be constructed
+/// directly or through the builder pattern for more complex scenarios.
+///
+/// # Examples
+///
+/// ```
+/// use wave::http_client::{HttpRequest, RequestBody, HttpMethod};
+/// use http::HeaderMap;
+///
+/// // Simple GET request
+/// let request = HttpRequest::new(
+///     "https://api.example.com/users",
+///     HttpMethod::Get,
+///     None,
+///     HeaderMap::new()
+/// );
+///
+/// // Using the builder pattern for complex requests
+/// let complex_request = HttpRequest::builder("https://api.example.com/users", HttpMethod::Post)
+///     .header("Authorization", "Bearer token123")
+///     .body(RequestBody::json(&serde_json::json!({"name": "Alice"}))?)
+///     .build();
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Debug, PartialEq, Clone)]
 pub struct HttpRequest {
+    /// Target URL for the request
     pub url: String,
+    /// HTTP method to use
     pub method: HttpMethod,
+    /// Optional request body
     pub body: Option<String>,
+    /// HTTP headers to send
     pub headers: HeaderMap,
 }
 
 impl HttpRequest {
-    /// Constructs a new HttpRequest with HeaderMap
+    /// Constructs a new HttpRequest
+    ///
+    /// Creates a basic HTTP request with the specified URL, method, body, and headers.
+    /// For more complex requests, use `HttpRequest::builder()` instead.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wave::http_client::{HttpRequest, HttpMethod};
+    /// use http::HeaderMap;
+    ///
+    /// let mut headers = HeaderMap::new();
+    /// headers.insert("content-type", "application/json".parse().unwrap());
+    ///
+    /// let request = HttpRequest::new(
+    ///     "https://api.example.com/users",
+    ///     HttpMethod::Post,
+    ///     Some(r#"{"name": "Alice"}"#.to_string()),
+    ///     headers
+    /// );
+    /// ```
     pub fn new(url: &str, method: HttpMethod, body: Option<String>, headers: HeaderMap) -> Self {
         Self {
             url: url.to_string(),
@@ -311,82 +521,67 @@ impl HttpRequest {
         }
     }
 
-    /// Constructs a new HttpRequest from Vec<(String, String)> (convenience method for backward compatibility)
-    pub fn new_with_headers(
-        url: &str,
-        method: HttpMethod,
-        body: Option<String>,
-        headers: Vec<(String, String)>,
-    ) -> Self {
-        let mut header_map = HeaderMap::new();
-        for (key, value) in headers {
-            if let (Ok(header_name), Ok(header_value)) = (
-                key.parse::<http::HeaderName>(),
-                value.parse::<http::HeaderValue>(),
-            ) {
-                header_map.insert(header_name, header_value);
-            }
-        }
-
-        Self {
-            url: url.to_string(),
-            method,
-            body,
-            headers: header_map,
-        }
-    }
-
-    /// Constructs a new HttpRequest with a RequestBody that handles serialization
-    pub fn with_body(
-        url: &str,
-        method: HttpMethod,
-        body: Option<RequestBody>,
-        headers: HeaderMap,
-    ) -> Self {
-        let mut headers = headers;
-        let body_string = body.map(|b| b.serialize(&mut headers));
-
-        Self {
-            url: url.to_string(),
-            method,
-            body: body_string,
-            headers,
-        }
-    }
-
-    /// Constructs a new HttpRequest with RequestBody from Vec<(String, String)> (convenience method)
-    pub fn with_body_from_headers(
-        url: &str,
-        method: HttpMethod,
-        body: Option<RequestBody>,
-        headers: Vec<(String, String)>,
-    ) -> Self {
-        let mut header_map = HeaderMap::new();
-        for (key, value) in headers {
-            if let (Ok(header_name), Ok(header_value)) = (
-                key.parse::<http::HeaderName>(),
-                value.parse::<http::HeaderValue>(),
-            ) {
-                header_map.insert(header_name, header_value);
-            }
-        }
-
-        Self::with_body(url, method, body, header_map)
-    }
-
     /// Create a request builder for complex requests
+    ///
+    /// Returns a `RequestBuilder` for constructing requests with the fluent API.
+    /// This is the recommended approach for requests with multiple headers or complex bodies.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wave::http_client::{HttpRequest, RequestBody, HttpMethod};
+    ///
+    /// let request = HttpRequest::builder("https://api.example.com/users", HttpMethod::Post)
+    ///     .header("Authorization", "Bearer token123")
+    ///     .header("Content-Type", "application/json")
+    ///     .body(RequestBody::text(r#"{"name": "Alice"}"#.to_string()))
+    ///     .build();
+    /// ```
     pub fn builder(url: impl Into<String>, method: HttpMethod) -> RequestBuilder {
         RequestBuilder::new(url, method)
     }
 }
 
-/// Trait for HTTP backends.
+/// Trait for HTTP backends that handle the actual network communication
+///
+/// This trait allows the HTTP client to be backend-agnostic, enabling
+/// different implementations for production (reqwest), testing (mock), or
+/// other specialized use cases.
+///
+/// # Examples
+///
+/// ```
+/// use wave::http_client::{HttpBackend, HttpRequest, HttpResponse, HttpError};
+/// use async_trait::async_trait;
+///
+/// struct LoggingBackend<B: HttpBackend> {
+///     inner: B,
+/// }
+///
+/// #[async_trait]
+/// impl<B: HttpBackend + Send + Sync> HttpBackend for LoggingBackend<B> {
+///     async fn send(&self, req: &HttpRequest) -> Result<HttpResponse, HttpError> {
+///         println!("Sending request to: {}", req.url);
+///         let response = self.inner.send(req).await?;
+///         println!("Received response with status: {}", response.status);
+///         Ok(response)
+///     }
+/// }
+/// ```
 #[async_trait]
 pub trait HttpBackend {
+    /// Send an HTTP request and return the response
+    ///
+    /// This is the core method that implementations must provide to handle
+    /// the actual HTTP communication.
     async fn send(&self, req: &HttpRequest) -> Result<HttpResponse, HttpError>;
 }
 
-/// Default backend using reqwest for real HTTP requests.
+/// Default backend using reqwest for real HTTP requests
+///
+/// This is the production backend that performs actual network communication
+/// using the reqwest library. It handles all standard HTTP methods and
+/// automatically manages connection pooling, timeouts, and other network concerns.
 pub struct ReqwestBackend;
 
 #[async_trait]
@@ -430,105 +625,81 @@ impl HttpBackend for ReqwestBackend {
     }
 }
 
-/// HTTP client generic over backend. Use ReqwestBackend for real requests, or a mock for tests.
+/// HTTP client generic over backend
+///
+/// A flexible HTTP client that can work with any backend implementing the
+/// `HttpBackend` trait. Use `ReqwestBackend` for real network requests,
+/// or implement a custom backend for testing or specialized behavior.
+///
+/// # Examples
+///
+/// ```
+/// use wave::http_client::{Client, ReqwestBackend, HttpRequest, HttpMethod};
+/// use http::HeaderMap;
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = Client::new(ReqwestBackend);
+/// let request = HttpRequest::new(
+///     "https://httpbin.org/get",
+///     HttpMethod::Get,
+///     None,
+///     HeaderMap::new()
+/// );
+///
+/// let response = client.send(&request).await?;
+/// println!("Status: {}", response.status);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Use ReqwestBackend for real requests, or a mock for tests.
 #[derive(Clone)]
 pub struct Client<B: HttpBackend + Send + Sync> {
     pub backend: B,
 }
 
 impl<B: HttpBackend + Send + Sync> Client<B> {
-    /// Constructs a new Client with the given backend.
+    /// Constructs a new Client with the given backend
+    ///
+    /// Creates a client instance that will use the specified backend for
+    /// all HTTP operations. The backend determines how requests are actually sent.
     pub fn new(backend: B) -> Self {
         Self { backend }
     }
 
     /// Sends an HTTP request and returns the response
-    pub async fn send(&self, req: &HttpRequest) -> Result<HttpResponse, HttpError> {
+    ///
+    /// This is the main method for executing HTTP requests. It delegates to the
+    /// configured backend to perform the actual network communication.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wave::http_client::{Client, ReqwestBackend, HttpRequest, HttpMethod};
+    /// use http::HeaderMap;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = Client::new(ReqwestBackend);
+    /// let request = HttpRequest::builder("https://httpbin.org/get", HttpMethod::Get)
+    ///     .header("User-Agent", "wave/1.0")
+    ///     .build();
+    ///
+    /// match client.send(&request).await {
+    ///     Ok(response) if response.is_success() => {
+    ///         println!("Success: {}", response.body);
+    ///     }
+    ///     Ok(response) => {
+    ///         println!("HTTP error: {}", response.status);
+    ///     }
+    ///     Err(e) => {
+    ///         println!("Network error: {}", e);
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+     pub async fn send(&self, req: &HttpRequest) -> Result<HttpResponse, HttpError> {
         self.backend.send(req).await
-    }
-
-    // Legacy methods for backward compatibility - deprecated but kept for now
-    // These will be removed in a future version
-
-    /// Encodes key-value pairs as application/x-www-form-urlencoded and sets Content-Type header.
-    /// DEPRECATED: Use RequestBody::form() instead
-    pub fn prepare_form_body(data: &[(String, String)], headers: &mut HeaderMap) -> String {
-        let body = RequestBody::form(data.to_vec());
-        body.serialize(headers)
-    }
-
-    /// Encodes key-value pairs as a JSON object and sets Content-Type header.
-    /// DEPRECATED: Use RequestBody::json() instead
-    pub fn prepare_json_body(data: Vec<(String, String)>, headers: &mut HeaderMap) -> String {
-        let map: HashMap<String, String> = data.into_iter().collect();
-        match RequestBody::json(&map) {
-            Ok(body) => body.serialize(headers),
-            Err(_) => {
-                RequestBody::ensure_content_type(headers, "application/json");
-                "{}".to_string()
-            }
-        }
-    }
-
-    /// Sends a GET request.
-    /// DEPRECATED: Use Client::send() with HttpRequest::new() or HttpRequest::builder()
-    pub async fn get(
-        &self,
-        url: &str,
-        headers: Vec<(String, String)>,
-    ) -> Result<HttpResponse, HttpError> {
-        let req = HttpRequest::new_with_headers(url, HttpMethod::Get, None, headers);
-        self.send(&req).await
-    }
-
-    /// Sends a POST request.
-    /// DEPRECATED: Use Client::send() with HttpRequest::new() or HttpRequest::builder()
-    pub async fn post(
-        &self,
-        url: &str,
-        body: &str,
-        headers: Vec<(String, String)>,
-    ) -> Result<HttpResponse, HttpError> {
-        let req =
-            HttpRequest::new_with_headers(url, HttpMethod::Post, Some(body.to_string()), headers);
-        self.send(&req).await
-    }
-
-    /// Sends a PUT request.
-    /// DEPRECATED: Use Client::send() with HttpRequest::new() or HttpRequest::builder()
-    pub async fn put(
-        &self,
-        url: &str,
-        body: &str,
-        headers: Vec<(String, String)>,
-    ) -> Result<HttpResponse, HttpError> {
-        let req =
-            HttpRequest::new_with_headers(url, HttpMethod::Put, Some(body.to_string()), headers);
-        self.send(&req).await
-    }
-
-    /// Sends a DELETE request.
-    /// DEPRECATED: Use Client::send() with HttpRequest::new() or HttpRequest::builder()
-    pub async fn delete(
-        &self,
-        url: &str,
-        headers: Vec<(String, String)>,
-    ) -> Result<HttpResponse, HttpError> {
-        let req = HttpRequest::new_with_headers(url, HttpMethod::Delete, None, headers);
-        self.send(&req).await
-    }
-
-    /// Sends a PATCH request.
-    /// DEPRECATED: Use Client::send() with HttpRequest::new() or HttpRequest::builder()
-    pub async fn patch(
-        &self,
-        url: &str,
-        body: &str,
-        headers: Vec<(String, String)>,
-    ) -> Result<HttpResponse, HttpError> {
-        let req =
-            HttpRequest::new_with_headers(url, HttpMethod::Patch, Some(body.to_string()), headers);
-        self.send(&req).await
     }
 }
 
@@ -666,13 +837,14 @@ mod tests {
     }
 
     #[test]
-    fn test_prepare_form_body_sets_header_and_encodes() {
+    fn test_request_body_form_encoding() {
         let mut headers = HeaderMap::new();
         let data = vec![
             ("foo".to_string(), "bar baz".to_string()),
             ("qux".to_string(), "1&2".to_string()),
         ];
-        let encoded = Client::<MockBackend>::prepare_form_body(&data, &mut headers);
+        let body = RequestBody::form(data);
+        let encoded = body.serialize(&mut headers);
         assert_eq!(encoded, "foo=bar%20baz&qux=1%262");
         assert!(headers.contains_key("content-type"));
         assert_eq!(
@@ -682,13 +854,14 @@ mod tests {
     }
 
     #[test]
-    fn test_prepare_json_body_sets_header_and_encodes() {
+    fn test_request_body_json_encoding() {
         let mut headers = HeaderMap::new();
-        let data = vec![
+        let data: std::collections::HashMap<String, String> = vec![
             ("foo".to_string(), "bar".to_string()),
             ("baz".to_string(), "qux".to_string()),
-        ];
-        let encoded = Client::<MockBackend>::prepare_json_body(data.clone(), &mut headers);
+        ].into_iter().collect();
+        let body = RequestBody::json(&data).unwrap();
+        let encoded = body.serialize(&mut headers);
         let encoded_json: serde_json::Value = serde_json::from_str(&encoded).unwrap();
         let expected_json: serde_json::Value = serde_json::json!({"foo": "bar", "baz": "qux"});
         assert_eq!(encoded_json, expected_json);
@@ -711,9 +884,10 @@ mod tests {
             error: None,
         });
         let client = Client::new(backend.clone());
-        let resp =
-            block_on(client.get("http://test", vec![("X-Req".to_string(), "1".to_string())]))
-                .unwrap();
+        let req = HttpRequest::builder("http://test", HttpMethod::Get)
+            .header("X-Req", "1")
+            .build();
+        let resp = block_on(client.send(&req)).unwrap();
         assert_eq!(resp.status, 200);
         assert_eq!(resp.body, "hello");
         let req = backend.last_request.lock().unwrap().clone().unwrap();
@@ -734,7 +908,8 @@ mod tests {
             error: None,
         });
         let client = Client::new(backend.clone());
-        let resp = block_on(client.post("http://test", "payload", vec![])).unwrap();
+        let req = HttpRequest::new("http://test", HttpMethod::Post, Some("payload".to_string()), HeaderMap::new());
+        let resp = block_on(client.send(&req)).unwrap();
         assert_eq!(resp.status, 201);
         assert_eq!(resp.body, "created");
         let req = backend.last_request.lock().unwrap().clone().unwrap();
@@ -790,8 +965,7 @@ mod tests {
         let data = serde_json::json!({"test": "data"});
         let req = HttpRequest::builder("https://example.com", HttpMethod::Post)
             .header("Authorization", "Bearer token")
-            .json_body(&data)
-            .unwrap()
+            .body(RequestBody::json(&data).unwrap())
             .build();
 
         assert_eq!(req.url, "https://example.com");
@@ -804,13 +978,9 @@ mod tests {
     #[test]
     fn test_http_request_with_body() {
         let data = vec![("key".to_string(), "value".to_string())];
-        let body = RequestBody::form(data);
-        let req = HttpRequest::with_body_from_headers(
-            "https://example.com",
-            HttpMethod::Post,
-            Some(body),
-            vec![],
-        );
+        let req = HttpRequest::builder("https://example.com", HttpMethod::Post)
+            .body(RequestBody::form(data))
+            .build();
 
         assert_eq!(req.url, "https://example.com");
         assert_eq!(req.method, HttpMethod::Post);
@@ -833,7 +1003,7 @@ mod tests {
             error: None,
         });
         let client = Client::new(backend.clone());
-        let req = HttpRequest::new_with_headers("http://test", HttpMethod::Get, None, vec![]);
+        let req = HttpRequest::new("http://test", HttpMethod::Get, None, HeaderMap::new());
         let resp = block_on(client.send(&req)).unwrap();
 
         assert_eq!(resp.status, 200);
@@ -855,7 +1025,8 @@ mod tests {
             error: Some(HttpError::Network("mock error".to_string())),
         });
         let client = Client::new(backend.clone());
-        let err = block_on(client.get("http://fail", vec![])).unwrap_err();
+        let req = HttpRequest::new("http://fail", HttpMethod::Get, None, HeaderMap::new());
+        let err = block_on(client.send(&req)).unwrap_err();
         assert!(matches!(err, HttpError::Network(_)));
         assert_eq!(format!("{err}"), "Network error: mock error");
         let req = backend.last_request.lock().unwrap().clone().unwrap();

@@ -396,4 +396,3 @@ mod tests {
         assert!(output.ends_with('\n'));
     }
 }
-

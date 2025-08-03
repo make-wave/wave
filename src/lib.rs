@@ -6,7 +6,22 @@ pub mod printer;
 use clap::{Parser, Subcommand};
 use error::{CliError, CollectionError, WaveError};
 use http_client::{Client, HttpMethod, HttpRequest, RequestBody, ReqwestBackend};
+use http::HeaderMap;
 use std::collections::HashMap;
+
+/// Convert Vec of header tuples to HeaderMap
+fn headers_to_map(headers: Vec<(String, String)>) -> HeaderMap {
+    let mut header_map = HeaderMap::new();
+    for (key, value) in headers {
+        if let (Ok(header_name), Ok(header_value)) = (
+            key.parse::<http::HeaderName>(),
+            value.parse::<http::HeaderValue>(),
+        ) {
+            header_map.insert(header_name, header_value);
+        }
+    }
+    header_map
+}
 
 #[derive(Subcommand)]
 pub enum Command {
@@ -232,7 +247,7 @@ pub async fn handle_get(
 ) -> Result<(), WaveError> {
     let url = validate_url(url)?;
     let (headers, _) = validate_params(params)?;
-    let req = HttpRequest::new_with_headers(&url, HttpMethod::Get, None, headers);
+    let req = HttpRequest::new(&url, HttpMethod::Get, None, headers_to_map(headers));
     execute_request_with_spinner(&req, spinner_msg, verbose).await
 }
 
@@ -248,12 +263,17 @@ pub async fn handle_method_with_body(
     let (headers, data) = validate_params(params)?;
 
     let req = if form {
-        let body = RequestBody::form(data);
-        HttpRequest::with_body_from_headers(&url, method, Some(body), headers)
+        HttpRequest::builder(&url, method)
+            .headers(headers_to_map(headers))
+            .body(RequestBody::form(data))
+            .build()
     } else {
         match RequestBody::json(&data.into_iter().collect::<HashMap<String, String>>()) {
-            Ok(body) => HttpRequest::with_body_from_headers(&url, method, Some(body), headers),
-            Err(_) => HttpRequest::new_with_headers(&url, method, Some("{}".to_string()), headers),
+            Ok(body) => HttpRequest::builder(&url, method)
+                .headers(headers_to_map(headers))
+                .body(body)
+                .build(),
+            Err(_) => HttpRequest::new(&url, method, Some("{}".to_string()), headers_to_map(headers)),
         }
     };
 
@@ -298,7 +318,7 @@ pub async fn handle_delete(
 ) -> Result<(), WaveError> {
     let url = validate_url(url)?;
     let (headers, _) = validate_params(params)?;
-    let req = HttpRequest::new_with_headers(&url, HttpMethod::Delete, None, headers);
+    let req = HttpRequest::new(&url, HttpMethod::Delete, None, headers_to_map(headers));
     execute_request_with_spinner(&req, spinner_msg, verbose).await
 }
 
@@ -389,13 +409,13 @@ fn prepare_collection_headers_and_body(
             (headers, json_str, false)
         }
         Some(collection::Body::Form(map)) => {
+            let form_data: Vec<(String, String)> = map.iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
             let mut header_map = http::HeaderMap::new();
-            let form_str = Client::<ReqwestBackend>::prepare_form_body(
-                &map.iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect::<Vec<_>>(),
-                &mut header_map,
-            );
+            let body = http_client::RequestBody::form(form_data);
+            let form_str = body.serialize(&mut header_map);
+            
             // Convert HeaderMap back to Vec for compatibility
             let form_headers: Vec<(String, String)> = header_map
                 .iter()
@@ -438,11 +458,11 @@ pub async fn handle_collection(
                                     &cli_headers,
                                     &[],
                                 );
-                                let req = HttpRequest::new_with_headers(
+                                let req = HttpRequest::new(
                                     &resolved.url,
                                     HttpMethod::Get,
                                     None,
-                                    headers,
+                                    headers_to_map(headers),
                                 );
                                 execute_request_with_spinner(&req, &spinner_msg, verbose).await?;
                             }
@@ -455,11 +475,11 @@ pub async fn handle_collection(
                                     &cli_headers,
                                     &[],
                                 );
-                                let req = HttpRequest::new_with_headers(
+                                let req = HttpRequest::new(
                                     &resolved.url,
                                     HttpMethod::Delete,
                                     None,
-                                    headers,
+                                    headers_to_map(headers),
                                 );
                                 execute_request_with_spinner(&req, &spinner_msg, verbose).await?;
                             }
@@ -508,11 +528,11 @@ pub async fn handle_collection(
                                     }
                                 };
 
-                                let req = HttpRequest::new_with_headers(
+                                let req = HttpRequest::new(
                                     &resolved.url,
                                     resolved.method.clone(),
                                     Some(final_body),
-                                    merged_headers,
+                                    headers_to_map(merged_headers),
                                 );
                                 execute_request_with_spinner(&req, &spinner_msg, verbose).await?;
                             }
