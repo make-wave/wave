@@ -1,7 +1,22 @@
-use crate::http_client::{HttpError, HttpResponse};
+//! Response formatting and output for the wave HTTP client
+//!
+//! This module handles the visual presentation of HTTP responses, including:
+//! - Colored status codes and headers
+//! - Pretty-printed JSON responses
+//! - Conditional header display (verbose mode or error status)
+//! - Error message formatting
+//!
+//! The output is optimized for terminal viewing with appropriate color coding
+//! to help users quickly understand response status and content.
+
+use crate::http::{HttpError, HttpResponse};
 use anstyle::{AnsiColor, Style};
 use std::io::{self, Write};
 
+/// Pretty-prints JSON with colored syntax highlighting
+///
+/// Uses the colored_json crate to format JSON with colored keys and values.
+/// Falls back to standard pretty-printing if coloring fails.
 fn pretty_print_json_colored(value: &serde_json::Value) -> String {
     use colored_json::{Color, ColoredFormatter, PrettyFormatter, Styler};
     let styler = Styler {
@@ -14,6 +29,13 @@ fn pretty_print_json_colored(value: &serde_json::Value) -> String {
         .unwrap_or_else(|_| serde_json::to_string_pretty(value).unwrap_or_default())
 }
 
+/// Returns the appropriate color style for HTTP status codes
+///
+/// Colors follow standard HTTP conventions:
+/// - 2xx: Green (success)
+/// - 3xx: Yellow (redirection)  
+/// - 4xx/5xx: Red (client/server errors)
+/// - Other: White
 fn get_status_style(status: u16) -> Style {
     match status {
         200..=299 => Style::new()
@@ -31,6 +53,7 @@ fn get_status_style(status: u16) -> Style {
     }
 }
 
+/// Formats the HTTP status line with appropriate coloring
 fn format_status_line(status: u16) -> String {
     let status_style = get_status_style(status);
     format!(
@@ -41,6 +64,11 @@ fn format_status_line(status: u16) -> String {
     )
 }
 
+/// Formats a single HTTP header with colored key-value styling
+///
+/// # Arguments
+/// * `name` - The header name (colored blue)
+/// * `value` - The header value (colored white)
 fn format_header(name: &str, value: &str) -> String {
     let key_style = Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Blue)));
     let value_style = Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::White)));
@@ -54,10 +82,16 @@ fn format_header(name: &str, value: &str) -> String {
     )
 }
 
+/// Determines whether to show all headers based on verbosity and status
+///
+/// Headers are shown when:
+/// - Verbose mode is enabled, OR
+/// - Response status indicates an error (4xx/5xx)
 fn should_show_all_headers(verbose: bool, status: u16) -> bool {
     verbose || (400..=599).contains(&status)
 }
 
+/// Formats all headers in the response
 fn format_all_headers(headers: &http::HeaderMap) -> String {
     let mut output = String::new();
     for (name, value) in headers {
@@ -69,6 +103,10 @@ fn format_all_headers(headers: &http::HeaderMap) -> String {
     output
 }
 
+/// Formats the headers section and returns whether headers were shown
+///
+/// # Returns
+/// A tuple of (formatted_headers_string, headers_were_displayed)
 fn format_headers_section(resp: &HttpResponse, verbose: bool) -> (String, bool) {
     let mut output = String::new();
     let showed_headers = should_show_all_headers(verbose, resp.status);
@@ -80,6 +118,10 @@ fn format_headers_section(resp: &HttpResponse, verbose: bool) -> (String, bool) 
     (output, showed_headers)
 }
 
+/// Shows Content-Type header when JSON parsing fails and headers weren't shown
+///
+/// This helps users understand why the response body isn't pretty-printed
+/// when it's not JSON format.
 fn format_content_type_if_needed(
     resp: &HttpResponse,
     is_json: bool,
@@ -96,6 +138,10 @@ fn format_content_type_if_needed(
     String::new()
 }
 
+/// Formats the response body with appropriate styling
+///
+/// JSON content is pretty-printed with syntax highlighting.
+/// Non-JSON content is displayed with basic white coloring.
 fn format_body(body: &str, parsed_json: Option<&serde_json::Value>) -> String {
     match parsed_json {
         Some(json) => pretty_print_json_colored(json),
@@ -111,6 +157,32 @@ fn format_body(body: &str, parsed_json: Option<&serde_json::Value>) -> String {
     }
 }
 
+/// Formats an HTTP response for terminal display
+///
+/// Creates a complete formatted representation of an HTTP response including:
+/// - Colored status line
+/// - Headers (when appropriate)
+/// - Pretty-printed JSON or plain text body
+///
+/// # Arguments
+/// * `resp` - The HTTP response to format
+/// * `verbose` - Whether to show all headers regardless of status
+///
+/// # Examples
+/// ```
+/// use wave::http::HttpResponse;
+/// use wave::printer::format_response;
+/// use http::HeaderMap;
+///
+/// let response = HttpResponse {
+///     status: 200,
+///     headers: HeaderMap::new(),
+///     body: r#"{"message": "success"}"#.to_string(),
+/// };
+///
+/// let formatted = format_response(&response, false);
+/// // Output includes colored status and pretty-printed JSON
+/// ```
 pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
     let mut output = String::new();
 
@@ -138,10 +210,46 @@ pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
     output
 }
 
+/// Prints an HTTP response result to stdout
+///
+/// Handles both successful responses and errors, formatting them appropriately
+/// for terminal display. Errors are displayed in red.
+///
+/// # Arguments
+/// * `result` - The HTTP response result (success or error)
+/// * `verbose` - Whether to show all headers in successful responses
+///
+/// # Examples
+/// ```
+/// use wave::http::{HttpResponse, HttpError};
+/// use wave::printer::print_response;
+/// use http::HeaderMap;
+///
+/// let response = Ok(HttpResponse {
+///     status: 200,
+///     headers: HeaderMap::new(),
+///     body: "Hello, World!".to_string(),
+/// });
+///
+/// print_response(response, false);
+/// // Prints formatted response to stdout
+/// ```
 pub fn print_response(result: Result<HttpResponse, HttpError>, verbose: bool) {
     let _ = print_response_to(&mut io::stdout(), result, verbose);
 }
 
+/// Prints an HTTP response result to any writer
+///
+/// Internal function that allows printing to different output destinations
+/// for testing and flexibility.
+///
+/// # Arguments
+/// * `writer` - The output destination
+/// * `result` - The HTTP response result
+/// * `verbose` - Whether to show all headers
+///
+/// # Errors
+/// Returns IO errors from the underlying writer
 fn print_response_to<W: Write>(
     writer: &mut W,
     result: Result<HttpResponse, HttpError>,

@@ -1,12 +1,37 @@
 pub mod collection;
 pub mod error;
-pub mod http_client;
+pub mod http;
 pub mod printer;
 
+use crate::http::{Client, HttpRequest, RequestBody, ReqwestBackend};
+use ::http::{HeaderMap, Method};
 use clap::{Parser, Subcommand};
 use error::{CliError, CollectionError, WaveError};
-use http_client::{Client, HttpMethod, HttpRequest, RequestBody, ReqwestBackend};
 use std::collections::HashMap;
+
+// Type aliases for clarity and consistency
+pub type KeyValuePairs = Vec<(String, String)>;
+pub type Headers = KeyValuePairs;
+pub type FormData = KeyValuePairs;
+
+// Re-export http_client types for backward compatibility
+pub mod http_client {
+    pub use crate::http::*;
+}
+
+/// Convert Vec of header tuples to HeaderMap
+fn headers_to_map(headers: Headers) -> HeaderMap {
+    let mut header_map = HeaderMap::new();
+    for (key, value) in headers {
+        if let (Ok(header_name), Ok(header_value)) = (
+            key.parse::<::http::HeaderName>(),
+            value.parse::<::http::HeaderValue>(),
+        ) {
+            header_map.insert(header_name, header_value);
+        }
+    }
+    header_map
+}
 
 #[derive(Subcommand)]
 pub enum Command {
@@ -87,7 +112,7 @@ pub struct Cli {
     pub command: Command,
 }
 
-pub type HeaderDataTuple = (Vec<(String, String)>, Vec<(String, String)>);
+pub type HeaderDataTuple = (Headers, FormData);
 
 pub fn parse_params(params: &[String]) -> HeaderDataTuple {
     let mut headers = Vec::new();
@@ -182,14 +207,14 @@ pub fn ensure_url_scheme(url: &str) -> String {
     }
 }
 
-// New: Command logic helpers
 use indicatif::{ProgressBar, ProgressStyle};
 use printer::print_response;
 use std::time::Duration;
 
-pub fn run_with_spinner<F, T>(message: &str, f: F) -> T
+pub async fn run_with_spinner<F, Fut, T>(message: &str, f: F) -> T
 where
-    F: FnOnce() -> T,
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = T>,
 {
     let pb = ProgressBar::new_spinner();
     pb.set_message(message.to_string());
@@ -208,27 +233,23 @@ where
         }
     }
 
-    let result = f();
+    let result = f().await;
     pb.finish_and_clear();
     result
 }
 
-// New: Common HTTP execution logic
-pub fn execute_request_with_spinner(
+pub async fn execute_request_with_spinner(
     req: &HttpRequest,
     spinner_msg: &str,
     verbose: bool,
 ) -> Result<(), WaveError> {
     let client = Client::new(ReqwestBackend);
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| WaveError::Runtime(format!("Failed to create async runtime: {e}")))?;
-
-    let result = run_with_spinner(spinner_msg, || rt.block_on(client.send(req)));
+    let result = run_with_spinner(spinner_msg, || client.send(req)).await;
     print_response(result, verbose);
     Ok(())
 }
 
-pub fn handle_get(
+pub async fn handle_get(
     url: &str,
     params: &[String],
     verbose: bool,
@@ -236,13 +257,12 @@ pub fn handle_get(
 ) -> Result<(), WaveError> {
     let url = validate_url(url)?;
     let (headers, _) = validate_params(params)?;
-    let req = HttpRequest::new_with_headers(&url, HttpMethod::Get, None, headers);
-    execute_request_with_spinner(&req, spinner_msg, verbose)
+    let req = HttpRequest::new(&url, Method::GET, None, headers_to_map(headers));
+    execute_request_with_spinner(&req, spinner_msg, verbose).await
 }
 
-// Consolidated handler for POST/PUT/PATCH methods with body data
-pub fn handle_method_with_body(
-    method: HttpMethod,
+pub async fn handle_method_with_body(
+    method: Method,
     url: &str,
     params: &[String],
     form: bool,
@@ -253,49 +273,59 @@ pub fn handle_method_with_body(
     let (headers, data) = validate_params(params)?;
 
     let req = if form {
-        let body = RequestBody::form(data);
-        HttpRequest::with_body_from_headers(&url, method, Some(body), headers)
+        HttpRequest::builder(&url, method)
+            .headers(headers_to_map(headers))
+            .body(RequestBody::form(data))
+            .build()
     } else {
         match RequestBody::json(&data.into_iter().collect::<HashMap<String, String>>()) {
-            Ok(body) => HttpRequest::with_body_from_headers(&url, method, Some(body), headers),
-            Err(_) => HttpRequest::new_with_headers(&url, method, Some("{}".to_string()), headers),
+            Ok(body) => HttpRequest::builder(&url, method)
+                .headers(headers_to_map(headers))
+                .body(body)
+                .build(),
+            Err(_) => HttpRequest::new(
+                &url,
+                method,
+                Some("{}".to_string()),
+                headers_to_map(headers),
+            ),
         }
     };
 
-    execute_request_with_spinner(&req, spinner_msg, verbose)
+    execute_request_with_spinner(&req, spinner_msg, verbose).await
 }
 
-pub fn handle_post(
+pub async fn handle_post(
     url: &str,
     params: &[String],
     form: bool,
     verbose: bool,
     spinner_msg: &str,
 ) -> Result<(), WaveError> {
-    handle_method_with_body(HttpMethod::Post, url, params, form, verbose, spinner_msg)
+    handle_method_with_body(Method::POST, url, params, form, verbose, spinner_msg).await
 }
 
-pub fn handle_put(
+pub async fn handle_put(
     url: &str,
     params: &[String],
     form: bool,
     verbose: bool,
     spinner_msg: &str,
 ) -> Result<(), WaveError> {
-    handle_method_with_body(HttpMethod::Put, url, params, form, verbose, spinner_msg)
+    handle_method_with_body(Method::PUT, url, params, form, verbose, spinner_msg).await
 }
 
-pub fn handle_patch(
+pub async fn handle_patch(
     url: &str,
     params: &[String],
     form: bool,
     verbose: bool,
     spinner_msg: &str,
 ) -> Result<(), WaveError> {
-    handle_method_with_body(HttpMethod::Patch, url, params, form, verbose, spinner_msg)
+    handle_method_with_body(Method::PATCH, url, params, form, verbose, spinner_msg).await
 }
 
-pub fn handle_delete(
+pub async fn handle_delete(
     url: &str,
     params: &[String],
     verbose: bool,
@@ -303,20 +333,17 @@ pub fn handle_delete(
 ) -> Result<(), WaveError> {
     let url = validate_url(url)?;
     let (headers, _) = validate_params(params)?;
-    let req = HttpRequest::new_with_headers(&url, HttpMethod::Delete, None, headers);
-    execute_request_with_spinner(&req, spinner_msg, verbose)
+    let req = HttpRequest::new(&url, Method::DELETE, None, headers_to_map(headers));
+    execute_request_with_spinner(&req, spinner_msg, verbose).await
 }
 
 /// Merge headers and body data, with CLI params overriding collection params
-type Headers = Vec<(String, String)>;
-type Body = Vec<(String, String)>;
-
 fn merge_headers_and_body(
     collection_headers: &[(String, String)],
     collection_body: &[(String, String)],
     cli_headers: &[(String, String)],
     cli_body: &[(String, String)],
-) -> (Headers, Body) {
+) -> (Headers, FormData) {
     let mut headers = collection_headers.to_vec();
     let mut body = collection_body.to_vec();
 
@@ -342,7 +369,7 @@ fn merge_headers_and_body(
 }
 
 /// Parse JSON string to key-value pairs
-fn parse_json_to_key_value_pairs(json_str: &str) -> Vec<(String, String)> {
+fn parse_json_to_key_value_pairs(json_str: &str) -> KeyValuePairs {
     if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
         if let Some(obj) = val.as_object() {
             return obj
@@ -355,7 +382,7 @@ fn parse_json_to_key_value_pairs(json_str: &str) -> Vec<(String, String)> {
 }
 
 /// Parse form data string to key-value pairs
-fn parse_form_to_key_value_pairs(form_str: &str) -> Vec<(String, String)> {
+fn parse_form_to_key_value_pairs(form_str: &str) -> KeyValuePairs {
     form_str
         .split('&')
         .filter_map(|pair| {
@@ -368,10 +395,8 @@ fn parse_form_to_key_value_pairs(form_str: &str) -> Vec<(String, String)> {
 }
 
 // Collection request handling
-fn prepare_collection_headers_and_body(
-    resolved: &collection::Request,
-) -> (Vec<(String, String)>, String, bool) {
-    let mut headers: Vec<(String, String)> = resolved
+fn prepare_collection_headers_and_body(resolved: &collection::Request) -> (Headers, String, bool) {
+    let mut headers: Headers = resolved
         .headers
         .clone()
         .unwrap_or_default()
@@ -394,15 +419,13 @@ fn prepare_collection_headers_and_body(
             (headers, json_str, false)
         }
         Some(collection::Body::Form(map)) => {
-            let mut header_map = http::HeaderMap::new();
-            let form_str = Client::<ReqwestBackend>::prepare_form_body(
-                &map.iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect::<Vec<_>>(),
-                &mut header_map,
-            );
+            let form_data: FormData = map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            let mut header_map = ::http::HeaderMap::new();
+            let body = http::RequestBody::form(form_data);
+            let form_str = body.serialize(&mut header_map);
+
             // Convert HeaderMap back to Vec for compatibility
-            let form_headers: Vec<(String, String)> = header_map
+            let form_headers: Headers = header_map
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
                 .collect();
@@ -413,7 +436,7 @@ fn prepare_collection_headers_and_body(
     }
 }
 
-pub fn handle_collection(
+pub async fn handle_collection(
     collection_name: &str,
     request_name: &str,
     verbose: bool,
@@ -434,8 +457,8 @@ pub fn handle_collection(
                         // Parse CLI params for potential override
                         let (cli_headers, cli_body) = parse_params(params);
                         match resolved.method {
-                            HttpMethod::Get => {
-                                let collection_headers: Vec<(String, String)> =
+                            Method::GET => {
+                                let collection_headers: Headers =
                                     resolved.headers.unwrap_or_default().into_iter().collect();
                                 let (headers, _) = merge_headers_and_body(
                                     &collection_headers,
@@ -443,16 +466,16 @@ pub fn handle_collection(
                                     &cli_headers,
                                     &[],
                                 );
-                                let req = HttpRequest::new_with_headers(
+                                let req = HttpRequest::new(
                                     &resolved.url,
-                                    HttpMethod::Get,
+                                    Method::GET,
                                     None,
-                                    headers,
+                                    headers_to_map(headers),
                                 );
-                                execute_request_with_spinner(&req, &spinner_msg, verbose)?;
+                                execute_request_with_spinner(&req, &spinner_msg, verbose).await?;
                             }
-                            HttpMethod::Delete => {
-                                let collection_headers: Vec<(String, String)> =
+                            Method::DELETE => {
+                                let collection_headers: Headers =
                                     resolved.headers.unwrap_or_default().into_iter().collect();
                                 let (headers, _) = merge_headers_and_body(
                                     &collection_headers,
@@ -460,15 +483,15 @@ pub fn handle_collection(
                                     &cli_headers,
                                     &[],
                                 );
-                                let req = HttpRequest::new_with_headers(
+                                let req = HttpRequest::new(
                                     &resolved.url,
-                                    HttpMethod::Delete,
+                                    Method::DELETE,
                                     None,
-                                    headers,
+                                    headers_to_map(headers),
                                 );
-                                execute_request_with_spinner(&req, &spinner_msg, verbose)?;
+                                execute_request_with_spinner(&req, &spinner_msg, verbose).await?;
                             }
-                            HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch => {
+                            Method::POST | Method::PUT | Method::PATCH => {
                                 let (collection_headers, collection_body, is_form) =
                                     prepare_collection_headers_and_body(&resolved);
 
@@ -513,13 +536,13 @@ pub fn handle_collection(
                                     }
                                 };
 
-                                let req = HttpRequest::new_with_headers(
+                                let req = HttpRequest::new(
                                     &resolved.url,
                                     resolved.method.clone(),
                                     Some(final_body),
-                                    merged_headers,
+                                    headers_to_map(merged_headers),
                                 );
-                                execute_request_with_spinner(&req, &spinner_msg, verbose)?;
+                                execute_request_with_spinner(&req, &spinner_msg, verbose).await?;
                             }
                             _ => {
                                 return Err(WaveError::Cli(CliError::UnsupportedMethod(
@@ -673,16 +696,16 @@ mod tests {
         assert!(validate_params(&params).is_err());
     }
 
-    #[test]
-    fn test_error_propagation_integration() {
+    #[tokio::test]
+    async fn test_error_propagation_integration() {
         // Test that validation errors propagate through the handle functions
-        let result = handle_get("", &[], false, "test");
+        let result = handle_get("", &[], false, "test").await;
         assert!(result.is_err());
 
-        let result = handle_get("localhost", &["invalid-param".to_string()], false, "test");
+        let result = handle_get("localhost", &["invalid-param".to_string()], false, "test").await;
         assert!(result.is_err());
 
-        let result = handle_get("example.com", &[":empty-key".to_string()], false, "test");
+        let result = handle_get("example.com", &[":empty-key".to_string()], false, "test").await;
         assert!(result.is_err());
     }
 
