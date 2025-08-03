@@ -13,7 +13,7 @@ fn spinner_msg(method: &str, url: &str, params: &[String]) -> String {
     )
 }
 
-fn run() -> Result<(), WaveError> {
+async fn run() -> Result<(), WaveError> {
     let cli = Cli::parse();
     use wave::Command;
     match cli.command {
@@ -23,7 +23,7 @@ fn run() -> Result<(), WaveError> {
             verbose,
         } => {
             let msg = spinner_msg("GET", &url, &params);
-            handle_get(&url, &params, verbose, &msg)?;
+            handle_get(&url, &params, verbose, &msg).await?;
         }
         Command::Post {
             url,
@@ -32,7 +32,7 @@ fn run() -> Result<(), WaveError> {
             verbose,
         } => {
             let msg = spinner_msg("POST", &url, &params);
-            handle_post(&url, &params, form, verbose, &msg)?;
+            handle_post(&url, &params, form, verbose, &msg).await?;
         }
         Command::Put {
             url,
@@ -41,7 +41,7 @@ fn run() -> Result<(), WaveError> {
             verbose,
         } => {
             let msg = spinner_msg("PUT", &url, &params);
-            handle_put(&url, &params, form, verbose, &msg)?;
+            handle_put(&url, &params, form, verbose, &msg).await?;
         }
         Command::Patch {
             url,
@@ -50,7 +50,7 @@ fn run() -> Result<(), WaveError> {
             verbose,
         } => {
             let msg = spinner_msg("PATCH", &url, &params);
-            handle_patch(&url, &params, form, verbose, &msg)?;
+            handle_patch(&url, &params, form, verbose, &msg).await?;
         }
         Command::Delete {
             url,
@@ -58,7 +58,7 @@ fn run() -> Result<(), WaveError> {
             verbose,
         } => {
             let msg = spinner_msg("DELETE", &url, &params);
-            handle_delete(&url, &params, verbose, &msg)?;
+            handle_delete(&url, &params, verbose, &msg).await?;
         }
         Command::Collection {
             collection,
@@ -66,14 +66,15 @@ fn run() -> Result<(), WaveError> {
             verbose,
             params,
         } => {
-            handle_collection(&collection, &request, verbose, &params)?;
+            handle_collection(&collection, &request, verbose, &params).await?;
         }
     }
     Ok(())
 }
 
-fn main() {
-    if let Err(e) = run() {
+#[tokio::main]
+async fn main() {
+    if let Err(e) = run().await {
         eprintln!("Error: {e}");
         if let Some(suggestion) = e.suggestion() {
             eprintln!("Suggestion: {suggestion}");
