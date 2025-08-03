@@ -11,7 +11,7 @@
 use std::fmt;
 use std::io;
 
-use crate::http_client::HttpError;
+use crate::http::HttpError;
 
 /// Central error type for the wave application
 ///

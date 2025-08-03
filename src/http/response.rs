@@ -298,4 +298,3 @@ mod tests {
         assert_eq!(resp.text(), &resp.body); // Ensure it's the same reference
     }
 }
-

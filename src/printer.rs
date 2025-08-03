@@ -9,7 +9,7 @@
 //! The output is optimized for terminal viewing with appropriate color coding
 //! to help users quickly understand response status and content.
 
-use crate::http_client::{HttpError, HttpResponse};
+use crate::http::{HttpError, HttpResponse};
 use anstyle::{AnsiColor, Style};
 use std::io::{self, Write};
 
@@ -170,7 +170,7 @@ fn format_body(body: &str, parsed_json: Option<&serde_json::Value>) -> String {
 ///
 /// # Examples
 /// ```
-/// use wave::http_client::HttpResponse;
+/// use wave::http::HttpResponse;
 /// use wave::printer::format_response;
 /// use http::HeaderMap;
 ///
@@ -221,7 +221,7 @@ pub fn format_response(resp: &HttpResponse, verbose: bool) -> String {
 ///
 /// # Examples
 /// ```
-/// use wave::http_client::{HttpResponse, HttpError};
+/// use wave::http::{HttpResponse, HttpError};
 /// use wave::printer::print_response;
 /// use http::HeaderMap;
 ///

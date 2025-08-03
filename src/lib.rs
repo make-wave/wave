@@ -3,10 +3,10 @@ pub mod error;
 pub mod http;
 pub mod printer;
 
+use crate::http::{Client, HttpRequest, RequestBody, ReqwestBackend};
+use ::http::{HeaderMap, Method};
 use clap::{Parser, Subcommand};
 use error::{CliError, CollectionError, WaveError};
-use ::http::{HeaderMap, Method};
-use crate::http::{Client, HttpRequest, RequestBody, ReqwestBackend};
 use std::collections::HashMap;
 
 // Type aliases for clarity and consistency
@@ -395,9 +395,7 @@ fn parse_form_to_key_value_pairs(form_str: &str) -> KeyValuePairs {
 }
 
 // Collection request handling
-fn prepare_collection_headers_and_body(
-    resolved: &collection::Request,
-) -> (Headers, String, bool) {
+fn prepare_collection_headers_and_body(resolved: &collection::Request) -> (Headers, String, bool) {
     let mut headers: Headers = resolved
         .headers
         .clone()
@@ -421,10 +419,9 @@ fn prepare_collection_headers_and_body(
             (headers, json_str, false)
         }
         Some(collection::Body::Form(map)) => {
-            let form_data: FormData =
-                map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            let form_data: FormData = map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
             let mut header_map = ::http::HeaderMap::new();
-            let body = http_client::RequestBody::form(form_data);
+            let body = http::RequestBody::form(form_data);
             let form_str = body.serialize(&mut header_map);
 
             // Convert HeaderMap back to Vec for compatibility

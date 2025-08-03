@@ -3,7 +3,7 @@
 //! This module provides functionality for loading and managing collections of HTTP requests
 //! from YAML files, including variable resolution and request parsing.
 
-use crate::http_client::parse_method;
+use crate::http::parse_method;
 use http::Method;
 use serde::de::{self, Deserializer, MapAccess, Visitor};
 use serde::Deserialize;
