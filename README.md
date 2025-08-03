@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="250" height="250" alt="wave" src="https://github.com/user-attachments/assets/6741625c-9333-4d7d-9b71-1d04dee61b9c" />
+  <img width="250" height="250" alt="wave" src="https://github.com/user-attachments/assets/6741625c-9333-4d7d-9b71-1d04dee61b9c" alt=""/>
   
   # `wave`: an HTTP client for folks who like their terminal
 </div>
@@ -10,10 +10,9 @@
 - GET, POST, PUT, PATCH, DELETE methods
 - Specify headers and body data inline
 - Responses printed in an easy-to-read format
-- Save and run collections of requests via YAML config files
+- Save collections of requests via YAML config files and optionally add/overwrite headers and body data when you run them
 - Easy integration with other terminal applications
 - MCP integration for LLM agents [coming soon!]
-- GraphQL requests [coming soon!]
 
 ## Installation
 
@@ -31,14 +30,29 @@ cargo install --path .
 
 ## Usage
 
-Basic request examples:
-
 ```sh
+# Inline requests
+## GET request
 wave get https://httpbin.org/get 
-wave post https://httpbin.org/post name=alice age=30
-wave put https://httpbin.org/put --form Authorization:Bearer123 foo=bar
-wave patch https://httpbin.org/patch Accept:application/json update=true
+
+## DELETE request with specified header
 wave delete https://httpbin.org/delete X-Delete-Reason:cleanup
+
+## POST request with JSON body (default behaviour)
+wave post https://httpbin.org/post name=alice age=30
+
+## PUT request with form data body (the Content-Type header is set automatically)
+wave put https://httpbin.org/put --form Authorization:Bearer123 foo=bar
+
+## PATCH request with JSON body and custom header
+wave patch https://httpbin.org/patch Accept:application/json update=true
+
+# Collection requests
+## Request get-user-info from .wave/test.yml
+wave -c test get-user-info
+
+## Request create-user from .wave/test.yml with additional body data
+wave -c test create-user newkey=newvalue
 ```
 
 - **Headers:** Use `key:value` syntax, e.g. `Authorization:Bearer123`
