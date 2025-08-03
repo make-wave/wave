@@ -73,6 +73,9 @@ pub enum Command {
         request: String,
         #[arg(short, long)]
         verbose: bool,
+        /// Headers and body data (key:value or key=value)
+        #[arg(value_parser, trailing_var_arg = true)]
+        params: Vec<String>,
     },
 }
 
@@ -304,6 +307,66 @@ pub fn handle_delete(
     execute_request_with_spinner(&req, spinner_msg, verbose)
 }
 
+/// Merge headers and body data, with CLI params overriding collection params
+type Headers = Vec<(String, String)>;
+type Body = Vec<(String, String)>;
+
+fn merge_headers_and_body(
+    collection_headers: &[(String, String)],
+    collection_body: &[(String, String)],
+    cli_headers: &[(String, String)],
+    cli_body: &[(String, String)],
+) -> (Headers, Body) {
+    let mut headers = collection_headers.to_vec();
+    let mut body = collection_body.to_vec();
+
+    // Override headers with CLI values
+    for (cli_key, cli_value) in cli_headers {
+        if let Some(pos) = headers.iter().position(|(k, _)| k == cli_key) {
+            headers[pos].1 = cli_value.clone();
+        } else {
+            headers.push((cli_key.clone(), cli_value.clone()));
+        }
+    }
+
+    // Override body with CLI values
+    for (cli_key, cli_value) in cli_body {
+        if let Some(pos) = body.iter().position(|(k, _)| k == cli_key) {
+            body[pos].1 = cli_value.clone();
+        } else {
+            body.push((cli_key.clone(), cli_value.clone()));
+        }
+    }
+
+    (headers, body)
+}
+
+/// Parse JSON string to key-value pairs
+fn parse_json_to_key_value_pairs(json_str: &str) -> Vec<(String, String)> {
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+        if let Some(obj) = val.as_object() {
+            return obj
+                .iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or(&v.to_string()).to_string()))
+                .collect();
+        }
+    }
+    vec![]
+}
+
+/// Parse form data string to key-value pairs
+fn parse_form_to_key_value_pairs(form_str: &str) -> Vec<(String, String)> {
+    form_str
+        .split('&')
+        .filter_map(|pair| {
+            let mut parts = pair.splitn(2, '=');
+            let k = parts.next()?;
+            let v = parts.next().unwrap_or("");
+            Some((k.to_string(), v.to_string()))
+        })
+        .collect()
+}
+
 // Collection request handling
 fn prepare_collection_headers_and_body(
     resolved: &collection::Request,
@@ -354,6 +417,7 @@ pub fn handle_collection(
     collection_name: &str,
     request_name: &str,
     verbose: bool,
+    params: &[String],
 ) -> Result<(), WaveError> {
     let yaml_path = format!(".wave/{collection_name}.yaml");
     let yml_path = format!(".wave/{collection_name}.yml");
@@ -367,10 +431,18 @@ pub fn handle_collection(
                 Some(req) => match collection::resolve_request_vars(req, &file_vars) {
                     Ok(resolved) => {
                         let spinner_msg = format!("{} {}", resolved.method, resolved.url);
+                        // Parse CLI params for potential override
+                        let (cli_headers, cli_body) = parse_params(params);
                         match resolved.method {
                             HttpMethod::Get => {
-                                let headers: Vec<(String, String)> =
+                                let collection_headers: Vec<(String, String)> =
                                     resolved.headers.unwrap_or_default().into_iter().collect();
+                                let (headers, _) = merge_headers_and_body(
+                                    &collection_headers,
+                                    &[],
+                                    &cli_headers,
+                                    &[],
+                                );
                                 let req = HttpRequest::new_with_headers(
                                     &resolved.url,
                                     HttpMethod::Get,
@@ -380,8 +452,14 @@ pub fn handle_collection(
                                 execute_request_with_spinner(&req, &spinner_msg, verbose)?;
                             }
                             HttpMethod::Delete => {
-                                let headers: Vec<(String, String)> =
+                                let collection_headers: Vec<(String, String)> =
                                     resolved.headers.unwrap_or_default().into_iter().collect();
+                                let (headers, _) = merge_headers_and_body(
+                                    &collection_headers,
+                                    &[],
+                                    &cli_headers,
+                                    &[],
+                                );
                                 let req = HttpRequest::new_with_headers(
                                     &resolved.url,
                                     HttpMethod::Delete,
@@ -391,13 +469,55 @@ pub fn handle_collection(
                                 execute_request_with_spinner(&req, &spinner_msg, verbose)?;
                             }
                             HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch => {
-                                let (headers, body, _is_form) =
+                                let (collection_headers, collection_body, is_form) =
                                     prepare_collection_headers_and_body(&resolved);
+
+                                // Parse body data from collection body string
+                                let collection_body_data = if collection_body.is_empty() {
+                                    vec![]
+                                } else if collection_body.starts_with('{') {
+                                    // JSON body - parse it
+                                    parse_json_to_key_value_pairs(&collection_body)
+                                } else {
+                                    // Form body - parse it
+                                    parse_form_to_key_value_pairs(&collection_body)
+                                };
+
+                                let (merged_headers, merged_body_data) = merge_headers_and_body(
+                                    &collection_headers,
+                                    &collection_body_data,
+                                    &cli_headers,
+                                    &cli_body,
+                                );
+
+                                // Reconstruct body from merged data
+                                let final_body = if is_form {
+                                    // Form encoding
+                                    merged_body_data
+                                        .iter()
+                                        .map(|(k, v)| format!("{k}={v}"))
+                                        .collect::<Vec<_>>()
+                                        .join("&")
+                                } else {
+                                    // JSON encoding
+                                    if merged_body_data.is_empty() {
+                                        "{}".to_string()
+                                    } else {
+                                        let json_obj: serde_json::Map<String, serde_json::Value> =
+                                            merged_body_data
+                                                .into_iter()
+                                                .map(|(k, v)| (k, serde_json::Value::String(v)))
+                                                .collect();
+                                        serde_json::to_string(&json_obj)
+                                            .unwrap_or_else(|_| "{}".to_string())
+                                    }
+                                };
+
                                 let req = HttpRequest::new_with_headers(
                                     &resolved.url,
                                     resolved.method.clone(),
-                                    Some(body),
-                                    headers,
+                                    Some(final_body),
+                                    merged_headers,
                                 );
                                 execute_request_with_spinner(&req, &spinner_msg, verbose)?;
                             }
@@ -592,5 +712,48 @@ mod tests {
 
         let result = validate_params(&["key:value:more".to_string()]).unwrap();
         assert_eq!(result.0[0].1, "value:more");
+    }
+
+    #[test]
+    fn test_merge_headers_and_body() {
+        let collection_headers = vec![
+            ("Authorization".to_string(), "Bearer123".to_string()),
+            ("Content-Type".to_string(), "application/json".to_string()),
+        ];
+        let collection_body = vec![
+            ("name".to_string(), "collection".to_string()),
+            ("type".to_string(), "test".to_string()),
+        ];
+        let cli_headers = vec![
+            ("Authorization".to_string(), "BearerCLI".to_string()),
+            ("X-Custom".to_string(), "header".to_string()),
+        ];
+        let cli_body = vec![
+            ("name".to_string(), "override".to_string()),
+            ("new_field".to_string(), "value".to_string()),
+        ];
+
+        let (merged_headers, merged_body) = merge_headers_and_body(
+            &collection_headers,
+            &collection_body,
+            &cli_headers,
+            &cli_body,
+        );
+
+        // Check that CLI overrides collection headers
+        assert!(merged_headers.contains(&("Authorization".to_string(), "BearerCLI".to_string())));
+        // Check that collection headers are preserved when not overridden
+        assert!(
+            merged_headers.contains(&("Content-Type".to_string(), "application/json".to_string()))
+        );
+        // Check that new CLI headers are added
+        assert!(merged_headers.contains(&("X-Custom".to_string(), "header".to_string())));
+
+        // Check that CLI overrides collection body
+        assert!(merged_body.contains(&("name".to_string(), "override".to_string())));
+        // Check that collection body is preserved when not overridden
+        assert!(merged_body.contains(&("type".to_string(), "test".to_string())));
+        // Check that new CLI body fields are added
+        assert!(merged_body.contains(&("new_field".to_string(), "value".to_string())));
     }
 }

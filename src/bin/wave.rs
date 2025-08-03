@@ -64,8 +64,9 @@ fn run() -> Result<(), WaveError> {
             collection,
             request,
             verbose,
+            params,
         } => {
-            handle_collection(&collection, &request, verbose)?;
+            handle_collection(&collection, &request, verbose, &params)?;
         }
     }
     Ok(())
