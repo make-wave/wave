@@ -3,7 +3,8 @@
 //! This module provides functionality for loading and managing collections of HTTP requests
 //! from YAML files, including variable resolution and request parsing.
 
-use crate::http_client::HttpMethod;
+use crate::http_client::parse_method;
+use http::Method;
 use serde::de::{self, Deserializer, MapAccess, Visitor};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -89,7 +90,7 @@ pub struct Request {
     /// Human-readable name for the request
     pub name: String,
     /// HTTP method (GET, POST, PUT, etc.)
-    pub method: HttpMethod,
+    pub method: Method,
     /// Target URL (may contain variables)
     pub url: String,
     /// Optional HTTP headers
@@ -113,9 +114,7 @@ impl<'de> Deserialize<'de> for Request {
         }
 
         let helper = RequestHelper::deserialize(deserializer)?;
-        let method = helper
-            .method
-            .parse::<HttpMethod>()
+        let method = parse_method(&helper.method)
             .map_err(|e| de::Error::custom(format!("Invalid HTTP method: {e}")))?;
 
         Ok(Request {

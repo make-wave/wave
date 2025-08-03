@@ -1,58 +1,31 @@
 use async_trait::async_trait;
-use http::HeaderMap;
+use http::{HeaderMap, Method};
 use std::fmt;
-use std::str::FromStr;
 
-/// HTTP methods supported by the wave client
+/// Parse a string into an HTTP method
 ///
-/// All standard HTTP methods commonly used in REST APIs and web development.
+/// Supports the standard HTTP methods commonly used in REST APIs and web development.
 /// Each method has specific semantics according to HTTP specifications.
-#[derive(Debug, Clone, PartialEq)]
-pub enum HttpMethod {
-    /// GET - Retrieve data (safe, idempotent)
-    Get,
-    /// POST - Create or submit data (not idempotent)
-    Post,
-    /// PUT - Update or create data (idempotent)
-    Put,
-    /// DELETE - Remove data (idempotent)
-    Delete,
-    /// PATCH - Partial update (not idempotent)
-    Patch,
-    /// HEAD - Retrieve headers only (safe, idempotent)
-    Head,
-    /// OPTIONS - Query supported methods (safe, idempotent)
-    Options,
-}
-
-impl fmt::Display for HttpMethod {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            HttpMethod::Get => write!(f, "GET"),
-            HttpMethod::Post => write!(f, "POST"),
-            HttpMethod::Put => write!(f, "PUT"),
-            HttpMethod::Delete => write!(f, "DELETE"),
-            HttpMethod::Patch => write!(f, "PATCH"),
-            HttpMethod::Head => write!(f, "HEAD"),
-            HttpMethod::Options => write!(f, "OPTIONS"),
-        }
-    }
-}
-
-impl FromStr for HttpMethod {
-    type Err = HttpError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_uppercase().as_str() {
-            "GET" => Ok(HttpMethod::Get),
-            "POST" => Ok(HttpMethod::Post),
-            "PUT" => Ok(HttpMethod::Put),
-            "DELETE" => Ok(HttpMethod::Delete),
-            "PATCH" => Ok(HttpMethod::Patch),
-            "HEAD" => Ok(HttpMethod::Head),
-            "OPTIONS" => Ok(HttpMethod::Options),
-            _ => Err(HttpError::UnsupportedMethod(s.to_string())),
-        }
+///
+/// # Examples
+///
+/// ```
+/// use wave::http_client::parse_method;
+/// use http::Method;
+///
+/// assert_eq!(parse_method("GET").unwrap(), Method::GET);
+/// assert_eq!(parse_method("post").unwrap(), Method::POST);
+/// ```
+pub fn parse_method(s: &str) -> Result<Method, HttpError> {
+    match s.to_uppercase().as_str() {
+        "GET" => Ok(Method::GET),
+        "POST" => Ok(Method::POST),
+        "PUT" => Ok(Method::PUT),
+        "DELETE" => Ok(Method::DELETE),
+        "PATCH" => Ok(Method::PATCH),
+        "HEAD" => Ok(Method::HEAD),
+        "OPTIONS" => Ok(Method::OPTIONS),
+        _ => Err(HttpError::UnsupportedMethod(s.to_string())),
     }
 }
 
@@ -227,14 +200,15 @@ impl RequestBody {
 /// # Examples
 ///
 /// ```
-/// use wave::http_client::{RequestBuilder, RequestBody, HttpMethod};
+/// use wave::http_client::{RequestBuilder, RequestBody};
+/// use http::Method;
 /// use std::collections::HashMap;
 ///
 /// let mut user_data = HashMap::new();
 /// user_data.insert("name", "Alice");
 /// user_data.insert("email", "alice@example.com");
 ///
-/// let request = RequestBuilder::new("https://api.example.com/users", HttpMethod::Post)
+/// let request = RequestBuilder::new("https://api.example.com/users", Method::POST)
 ///     .header("Authorization", "Bearer token123")
 ///     .header("Accept", "application/json")
 ///     .body(RequestBody::json(&user_data)?)
@@ -244,7 +218,7 @@ impl RequestBody {
 #[derive(Debug)]
 pub struct RequestBuilder {
     url: String,
-    method: HttpMethod,
+    method: Method,
     headers: HeaderMap,
     body: Option<RequestBody>,
 }
@@ -254,7 +228,7 @@ impl RequestBuilder {
     ///
     /// Initializes a builder with the specified URL and HTTP method.
     /// Additional configuration can be added using the fluent API methods.
-    pub fn new(url: impl Into<String>, method: HttpMethod) -> Self {
+    pub fn new(url: impl Into<String>, method: Method) -> Self {
         Self {
             url: url.into(),
             method,
@@ -306,19 +280,20 @@ impl RequestBuilder {
     /// # Examples
     ///
     /// ```
-    /// use wave::http_client::{RequestBuilder, RequestBody, HttpMethod};
+    /// use wave::http_client::{RequestBuilder, RequestBody};
+    /// use http::Method;
     /// use std::collections::HashMap;
     ///
     /// // JSON body
     /// let mut data = HashMap::new();
     /// data.insert("name", "Alice");
-    /// let request = RequestBuilder::new("https://api.example.com/users", HttpMethod::Post)
+    /// let request = RequestBuilder::new("https://api.example.com/users", Method::POST)
     ///     .body(RequestBody::json(&data)?)
     ///     .build();
     ///
     /// // Form body
     /// let form_data = vec![("username".to_string(), "alice".to_string())];
-    /// let request2 = RequestBuilder::new("https://api.example.com/login", HttpMethod::Post)
+    /// let request2 = RequestBuilder::new("https://api.example.com/login", Method::POST)
     ///     .body(RequestBody::form(form_data))
     ///     .build();
     /// # Ok::<(), Box<dyn std::error::Error>>(())
@@ -460,19 +435,19 @@ impl HttpResponse {
 /// # Examples
 ///
 /// ```
-/// use wave::http_client::{HttpRequest, RequestBody, HttpMethod};
-/// use http::HeaderMap;
+/// use wave::http_client::{HttpRequest, RequestBody};
+/// use http::{HeaderMap, Method};
 ///
 /// // Simple GET request
 /// let request = HttpRequest::new(
 ///     "https://api.example.com/users",
-///     HttpMethod::Get,
+///     Method::GET,
 ///     None,
 ///     HeaderMap::new()
 /// );
 ///
 /// // Using the builder pattern for complex requests
-/// let complex_request = HttpRequest::builder("https://api.example.com/users", HttpMethod::Post)
+/// let complex_request = HttpRequest::builder("https://api.example.com/users", Method::POST)
 ///     .header("Authorization", "Bearer token123")
 ///     .body(RequestBody::json(&serde_json::json!({"name": "Alice"}))?)
 ///     .build();
@@ -483,7 +458,7 @@ pub struct HttpRequest {
     /// Target URL for the request
     pub url: String,
     /// HTTP method to use
-    pub method: HttpMethod,
+    pub method: Method,
     /// Optional request body
     pub body: Option<String>,
     /// HTTP headers to send
@@ -499,20 +474,20 @@ impl HttpRequest {
     /// # Examples
     ///
     /// ```
-    /// use wave::http_client::{HttpRequest, HttpMethod};
-    /// use http::HeaderMap;
+    /// use wave::http_client::HttpRequest;
+    /// use http::{HeaderMap, Method};
     ///
     /// let mut headers = HeaderMap::new();
     /// headers.insert("content-type", "application/json".parse().unwrap());
     ///
     /// let request = HttpRequest::new(
     ///     "https://api.example.com/users",
-    ///     HttpMethod::Post,
+    ///     Method::POST,
     ///     Some(r#"{"name": "Alice"}"#.to_string()),
     ///     headers
     /// );
     /// ```
-    pub fn new(url: &str, method: HttpMethod, body: Option<String>, headers: HeaderMap) -> Self {
+    pub fn new(url: &str, method: Method, body: Option<String>, headers: HeaderMap) -> Self {
         Self {
             url: url.to_string(),
             method,
@@ -529,15 +504,16 @@ impl HttpRequest {
     /// # Examples
     ///
     /// ```
-    /// use wave::http_client::{HttpRequest, RequestBody, HttpMethod};
+    /// use wave::http_client::{HttpRequest, RequestBody};
+    /// use http::Method;
     ///
-    /// let request = HttpRequest::builder("https://api.example.com/users", HttpMethod::Post)
+    /// let request = HttpRequest::builder("https://api.example.com/users", Method::POST)
     ///     .header("Authorization", "Bearer token123")
     ///     .header("Content-Type", "application/json")
     ///     .body(RequestBody::text(r#"{"name": "Alice"}"#.to_string()))
     ///     .build();
     /// ```
-    pub fn builder(url: impl Into<String>, method: HttpMethod) -> RequestBuilder {
+    pub fn builder(url: impl Into<String>, method: Method) -> RequestBuilder {
         RequestBuilder::new(url, method)
     }
 }
@@ -588,14 +564,18 @@ pub struct ReqwestBackend;
 impl HttpBackend for ReqwestBackend {
     async fn send(&self, req: &HttpRequest) -> Result<HttpResponse, HttpError> {
         let client = reqwest::Client::new();
-        let mut request_builder = match req.method {
-            HttpMethod::Get => client.get(&req.url),
-            HttpMethod::Post => client.post(&req.url),
-            HttpMethod::Put => client.put(&req.url),
-            HttpMethod::Delete => client.delete(&req.url),
-            HttpMethod::Patch => client.patch(&req.url),
-            HttpMethod::Head => client.head(&req.url),
-            HttpMethod::Options => client.request(reqwest::Method::OPTIONS, &req.url),
+        let mut request_builder = match &req.method {
+            &Method::GET => client.get(&req.url),
+            &Method::POST => client.post(&req.url),
+            &Method::PUT => client.put(&req.url),
+            &Method::DELETE => client.delete(&req.url),
+            &Method::PATCH => client.patch(&req.url),
+            &Method::HEAD => client.head(&req.url),
+            &Method::OPTIONS => client.request(reqwest::Method::OPTIONS, &req.url),
+            method => client.request(
+                reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap(),
+                &req.url,
+            ),
         };
         if let Some(ref body) = req.body {
             request_builder = request_builder.body(body.clone());
@@ -634,14 +614,14 @@ impl HttpBackend for ReqwestBackend {
 /// # Examples
 ///
 /// ```
-/// use wave::http_client::{Client, ReqwestBackend, HttpRequest, HttpMethod};
-/// use http::HeaderMap;
+/// use wave::http_client::{Client, ReqwestBackend, HttpRequest};
+/// use http::{HeaderMap, Method};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let client = Client::new(ReqwestBackend);
 /// let request = HttpRequest::new(
 ///     "https://httpbin.org/get",
-///     HttpMethod::Get,
+///     Method::GET,
 ///     None,
 ///     HeaderMap::new()
 /// );
@@ -675,12 +655,12 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
     /// # Examples
     ///
     /// ```
-    /// use wave::http_client::{Client, ReqwestBackend, HttpRequest, HttpMethod};
-    /// use http::HeaderMap;
+    /// use wave::http_client::{Client, ReqwestBackend, HttpRequest};
+    /// use http::{HeaderMap, Method};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = Client::new(ReqwestBackend);
-    /// let request = HttpRequest::builder("https://httpbin.org/get", HttpMethod::Get)
+    /// let request = HttpRequest::builder("https://httpbin.org/get", Method::GET)
     ///     .header("User-Agent", "wave/1.0")
     ///     .build();
     ///
@@ -698,7 +678,7 @@ impl<B: HttpBackend + Send + Sync> Client<B> {
     /// # Ok(())
     /// # }
     /// ```
-     pub async fn send(&self, req: &HttpRequest) -> Result<HttpResponse, HttpError> {
+    pub async fn send(&self, req: &HttpRequest) -> Result<HttpResponse, HttpError> {
         self.backend.send(req).await
     }
 }
@@ -748,92 +728,47 @@ mod tests {
 
         let req = HttpRequest::new(
             "http://example.com",
-            HttpMethod::Post,
+            Method::POST,
             Some("body".to_string()),
             headers.clone(),
         );
         assert_eq!(req.url, "http://example.com");
-        assert_eq!(req.method, HttpMethod::Post);
+        assert_eq!(req.method, Method::POST);
         assert_eq!(req.body, Some("body".to_string()));
         assert_eq!(req.headers, headers);
     }
 
     #[test]
-    fn test_http_method_from_str() {
+    fn test_parse_method() {
         // Test: Valid method parsing - unwrap is safe for known valid strings
+        assert_eq!(parse_method("GET").expect("Test: Valid GET"), Method::GET);
+        assert_eq!(parse_method("get").expect("Test: Valid get"), Method::GET);
         assert_eq!(
-            "GET".parse::<HttpMethod>().expect("Test: Valid GET"),
-            HttpMethod::Get
+            parse_method("POST").expect("Test: Valid POST"),
+            Method::POST
+        );
+        assert_eq!(parse_method("put").expect("Test: Valid put"), Method::PUT);
+        assert_eq!(
+            parse_method("DELETE").expect("Test: Valid DELETE"),
+            Method::DELETE
         );
         assert_eq!(
-            "get".parse::<HttpMethod>().expect("Test: Valid get"),
-            HttpMethod::Get
+            parse_method("patch").expect("Test: Valid patch"),
+            Method::PATCH
         );
         assert_eq!(
-            "POST".parse::<HttpMethod>().expect("Test: Valid POST"),
-            HttpMethod::Post
+            parse_method("HEAD").expect("Test: Valid HEAD"),
+            Method::HEAD
         );
         assert_eq!(
-            "put".parse::<HttpMethod>().expect("Test: Valid put"),
-            HttpMethod::Put
-        );
-        assert_eq!(
-            "DELETE".parse::<HttpMethod>().expect("Test: Valid DELETE"),
-            HttpMethod::Delete
-        );
-        assert_eq!(
-            "patch".parse::<HttpMethod>().expect("Test: Valid patch"),
-            HttpMethod::Patch
-        );
-        assert_eq!(
-            "HEAD".parse::<HttpMethod>().expect("Test: Valid HEAD"),
-            HttpMethod::Head
-        );
-        assert_eq!(
-            "options"
-                .parse::<HttpMethod>()
-                .expect("Test: Valid options"),
-            HttpMethod::Options
+            parse_method("options").expect("Test: Valid options"),
+            Method::OPTIONS
         );
 
         assert!(matches!(
-            "INVALID".parse::<HttpMethod>(),
+            parse_method("INVALID"),
             Err(HttpError::UnsupportedMethod(_))
         ));
-    }
-
-    #[test]
-    fn test_http_method_standard_from_str_trait() {
-        // Test that FromStr trait works as expected
-        assert_eq!(HttpMethod::from_str("GET").unwrap(), HttpMethod::Get);
-        assert_eq!(HttpMethod::from_str("post").unwrap(), HttpMethod::Post);
-
-        // Test error handling
-        let result = HttpMethod::from_str("INVALID");
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            HttpError::UnsupportedMethod(_)
-        ));
-
-        // Test that we can use it in generic contexts
-        fn parse_method<T: FromStr>(s: &str) -> Result<T, T::Err> {
-            s.parse()
-        }
-
-        let method: HttpMethod = parse_method("PUT").unwrap();
-        assert_eq!(method, HttpMethod::Put);
-    }
-
-    #[test]
-    fn test_http_method_display() {
-        assert_eq!(format!("{}", HttpMethod::Get), "GET");
-        assert_eq!(format!("{}", HttpMethod::Post), "POST");
-        assert_eq!(format!("{}", HttpMethod::Put), "PUT");
-        assert_eq!(format!("{}", HttpMethod::Delete), "DELETE");
-        assert_eq!(format!("{}", HttpMethod::Patch), "PATCH");
-        assert_eq!(format!("{}", HttpMethod::Head), "HEAD");
-        assert_eq!(format!("{}", HttpMethod::Options), "OPTIONS");
     }
 
     #[test]
@@ -859,7 +794,9 @@ mod tests {
         let data: std::collections::HashMap<String, String> = vec![
             ("foo".to_string(), "bar".to_string()),
             ("baz".to_string(), "qux".to_string()),
-        ].into_iter().collect();
+        ]
+        .into_iter()
+        .collect();
         let body = RequestBody::json(&data).unwrap();
         let encoded = body.serialize(&mut headers);
         let encoded_json: serde_json::Value = serde_json::from_str(&encoded).unwrap();
@@ -884,7 +821,7 @@ mod tests {
             error: None,
         });
         let client = Client::new(backend.clone());
-        let req = HttpRequest::builder("http://test", HttpMethod::Get)
+        let req = HttpRequest::builder("http://test", Method::GET)
             .header("X-Req", "1")
             .build();
         let resp = block_on(client.send(&req)).unwrap();
@@ -892,7 +829,7 @@ mod tests {
         assert_eq!(resp.body, "hello");
         let req = backend.last_request.lock().unwrap().clone().unwrap();
         assert_eq!(req.url, "http://test");
-        assert_eq!(req.method, HttpMethod::Get);
+        assert_eq!(req.method, Method::GET);
         assert_eq!(req.headers.get("x-req").unwrap(), "1");
     }
 
@@ -908,45 +845,38 @@ mod tests {
             error: None,
         });
         let client = Client::new(backend.clone());
-        let req = HttpRequest::new("http://test", HttpMethod::Post, Some("payload".to_string()), HeaderMap::new());
+        let req = HttpRequest::new(
+            "http://test",
+            Method::POST,
+            Some("payload".to_string()),
+            HeaderMap::new(),
+        );
         let resp = block_on(client.send(&req)).unwrap();
         assert_eq!(resp.status, 201);
         assert_eq!(resp.body, "created");
         let req = backend.last_request.lock().unwrap().clone().unwrap();
-        assert_eq!(req.method, HttpMethod::Post);
+        assert_eq!(req.method, Method::POST);
         assert_eq!(req.body, Some("payload".to_string()));
     }
 
     #[test]
-    fn test_request_body_json() {
-        let data = serde_json::json!({"name": "Alice", "age": 30});
-        let body = RequestBody::json(&data).unwrap();
-        let mut headers = HeaderMap::new();
-        let serialized = body.serialize(&mut headers);
-
-        assert!(headers.contains_key("content-type"));
-        assert_eq!(headers.get("content-type").unwrap(), "application/json");
-        let parsed: serde_json::Value = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(parsed["name"], "Alice");
-        assert_eq!(parsed["age"], 30);
-    }
-
-    #[test]
-    fn test_request_body_form() {
-        let data = vec![
-            ("name".to_string(), "Alice".to_string()),
-            ("age".to_string(), "30".to_string()),
-        ];
-        let body = RequestBody::form(data);
-        let mut headers = HeaderMap::new();
-        let serialized = body.serialize(&mut headers);
-
-        assert!(headers.contains_key("content-type"));
-        assert_eq!(
-            headers.get("content-type").unwrap(),
-            "application/x-www-form-urlencoded"
-        );
-        assert_eq!(serialized, "name=Alice&age=30");
+    fn test_client_handles_backend_error() {
+        let backend = Arc::new(MockBackend {
+            last_request: Mutex::new(None),
+            response: HttpResponse {
+                status: 500,
+                headers: HeaderMap::new(),
+                body: "fail".to_string(),
+            },
+            error: Some(HttpError::Network("mock error".to_string())),
+        });
+        let client = Client::new(backend.clone());
+        let req = HttpRequest::new("http://fail", Method::GET, None, HeaderMap::new());
+        let err = block_on(client.send(&req)).unwrap_err();
+        assert!(matches!(err, HttpError::Network(_)));
+        assert_eq!(format!("{err}"), "Network error: mock error");
+        let req = backend.last_request.lock().unwrap().clone().unwrap();
+        assert_eq!(req.url, "http://fail");
     }
 
     #[test]
@@ -963,79 +893,22 @@ mod tests {
     #[test]
     fn test_request_builder() {
         let data = serde_json::json!({"test": "data"});
-        let req = HttpRequest::builder("https://example.com", HttpMethod::Post)
+        let req = HttpRequest::builder("https://example.com", Method::POST)
             .header("Authorization", "Bearer token")
             .body(RequestBody::json(&data).unwrap())
             .build();
 
         assert_eq!(req.url, "https://example.com");
-        assert_eq!(req.method, HttpMethod::Post);
+        assert_eq!(req.method, Method::POST);
         assert_eq!(req.headers.get("authorization").unwrap(), "Bearer token");
         assert_eq!(req.headers.get("content-type").unwrap(), "application/json");
         assert!(req.body.is_some());
     }
 
-    #[test]
-    fn test_http_request_with_body() {
-        let data = vec![("key".to_string(), "value".to_string())];
-        let req = HttpRequest::builder("https://example.com", HttpMethod::Post)
-            .body(RequestBody::form(data))
-            .build();
-
-        assert_eq!(req.url, "https://example.com");
-        assert_eq!(req.method, HttpMethod::Post);
-        assert_eq!(
-            req.headers.get("content-type").unwrap(),
-            "application/x-www-form-urlencoded"
-        );
-        assert_eq!(req.body, Some("key=value".to_string()));
-    }
-
-    #[test]
-    fn test_client_send() {
-        let backend = Arc::new(MockBackend {
-            last_request: Mutex::new(None),
-            response: HttpResponse {
-                status: 200,
-                headers: HeaderMap::new(),
-                body: "success".to_string(),
-            },
-            error: None,
-        });
-        let client = Client::new(backend.clone());
-        let req = HttpRequest::new("http://test", HttpMethod::Get, None, HeaderMap::new());
-        let resp = block_on(client.send(&req)).unwrap();
-
-        assert_eq!(resp.status, 200);
-        assert_eq!(resp.body, "success");
-        let sent_req = backend.last_request.lock().unwrap().clone().unwrap();
-        assert_eq!(sent_req.url, "http://test");
-        assert_eq!(sent_req.method, HttpMethod::Get);
-    }
-
-    #[test]
-    fn test_client_handles_backend_error() {
-        let backend = Arc::new(MockBackend {
-            last_request: Mutex::new(None),
-            response: HttpResponse {
-                status: 500,
-                headers: HeaderMap::new(),
-                body: "fail".to_string(),
-            },
-            error: Some(HttpError::Network("mock error".to_string())),
-        });
-        let client = Client::new(backend.clone());
-        let req = HttpRequest::new("http://fail", HttpMethod::Get, None, HeaderMap::new());
-        let err = block_on(client.send(&req)).unwrap_err();
-        assert!(matches!(err, HttpError::Network(_)));
-        assert_eq!(format!("{err}"), "Network error: mock error");
-        let req = backend.last_request.lock().unwrap().clone().unwrap();
-        assert_eq!(req.url, "http://fail");
-    }
-
     // Tests for HttpResponse convenience methods
     #[test]
-    fn test_response_is_success() {
+    fn test_response_status_methods() {
+        // Test is_success (2xx range)
         let resp_200 = HttpResponse {
             status: 200,
             headers: HeaderMap::new(),
@@ -1056,26 +929,13 @@ mod tests {
             headers: HeaderMap::new(),
             body: "Redirect".to_string(),
         };
-        let resp_404 = HttpResponse {
-            status: 404,
-            headers: HeaderMap::new(),
-            body: "Not found".to_string(),
-        };
 
         assert!(resp_200.is_success());
         assert!(resp_201.is_success());
         assert!(resp_299.is_success());
         assert!(!resp_300.is_success());
-        assert!(!resp_404.is_success());
-    }
 
-    #[test]
-    fn test_response_is_client_error() {
-        let resp_200 = HttpResponse {
-            status: 200,
-            headers: HeaderMap::new(),
-            body: "OK".to_string(),
-        };
+        // Test is_client_error (4xx range)
         let resp_399 = HttpResponse {
             status: 399,
             headers: HeaderMap::new(),
@@ -1108,25 +968,8 @@ mod tests {
         assert!(resp_404.is_client_error());
         assert!(resp_499.is_client_error());
         assert!(!resp_500.is_client_error());
-    }
 
-    #[test]
-    fn test_response_is_server_error() {
-        let resp_404 = HttpResponse {
-            status: 404,
-            headers: HeaderMap::new(),
-            body: "Not found".to_string(),
-        };
-        let resp_499 = HttpResponse {
-            status: 499,
-            headers: HeaderMap::new(),
-            body: "Custom client error".to_string(),
-        };
-        let resp_500 = HttpResponse {
-            status: 500,
-            headers: HeaderMap::new(),
-            body: "Internal server error".to_string(),
-        };
+        // Test is_server_error (5xx range)
         let resp_502 = HttpResponse {
             status: 502,
             headers: HeaderMap::new(),
@@ -1149,31 +992,8 @@ mod tests {
         assert!(resp_502.is_server_error());
         assert!(resp_599.is_server_error());
         assert!(!resp_600.is_server_error());
-    }
 
-    #[test]
-    fn test_response_is_error() {
-        let resp_200 = HttpResponse {
-            status: 200,
-            headers: HeaderMap::new(),
-            body: "OK".to_string(),
-        };
-        let resp_399 = HttpResponse {
-            status: 399,
-            headers: HeaderMap::new(),
-            body: "Custom redirect".to_string(),
-        };
-        let resp_400 = HttpResponse {
-            status: 400,
-            headers: HeaderMap::new(),
-            body: "Bad request".to_string(),
-        };
-        let resp_500 = HttpResponse {
-            status: 500,
-            headers: HeaderMap::new(),
-            body: "Server error".to_string(),
-        };
-
+        // Test is_error (4xx or 5xx range)
         assert!(!resp_200.is_error());
         assert!(!resp_399.is_error());
         assert!(resp_400.is_error());

@@ -5,8 +5,8 @@ pub mod printer;
 
 use clap::{Parser, Subcommand};
 use error::{CliError, CollectionError, WaveError};
-use http_client::{Client, HttpMethod, HttpRequest, RequestBody, ReqwestBackend};
-use http::HeaderMap;
+use http::{HeaderMap, Method};
+use http_client::{Client, HttpRequest, RequestBody, ReqwestBackend};
 use std::collections::HashMap;
 
 /// Convert Vec of header tuples to HeaderMap
@@ -247,12 +247,12 @@ pub async fn handle_get(
 ) -> Result<(), WaveError> {
     let url = validate_url(url)?;
     let (headers, _) = validate_params(params)?;
-    let req = HttpRequest::new(&url, HttpMethod::Get, None, headers_to_map(headers));
+    let req = HttpRequest::new(&url, Method::GET, None, headers_to_map(headers));
     execute_request_with_spinner(&req, spinner_msg, verbose).await
 }
 
 pub async fn handle_method_with_body(
-    method: HttpMethod,
+    method: Method,
     url: &str,
     params: &[String],
     form: bool,
@@ -273,7 +273,12 @@ pub async fn handle_method_with_body(
                 .headers(headers_to_map(headers))
                 .body(body)
                 .build(),
-            Err(_) => HttpRequest::new(&url, method, Some("{}".to_string()), headers_to_map(headers)),
+            Err(_) => HttpRequest::new(
+                &url,
+                method,
+                Some("{}".to_string()),
+                headers_to_map(headers),
+            ),
         }
     };
 
@@ -287,7 +292,7 @@ pub async fn handle_post(
     verbose: bool,
     spinner_msg: &str,
 ) -> Result<(), WaveError> {
-    handle_method_with_body(HttpMethod::Post, url, params, form, verbose, spinner_msg).await
+    handle_method_with_body(Method::POST, url, params, form, verbose, spinner_msg).await
 }
 
 pub async fn handle_put(
@@ -297,7 +302,7 @@ pub async fn handle_put(
     verbose: bool,
     spinner_msg: &str,
 ) -> Result<(), WaveError> {
-    handle_method_with_body(HttpMethod::Put, url, params, form, verbose, spinner_msg).await
+    handle_method_with_body(Method::PUT, url, params, form, verbose, spinner_msg).await
 }
 
 pub async fn handle_patch(
@@ -307,7 +312,7 @@ pub async fn handle_patch(
     verbose: bool,
     spinner_msg: &str,
 ) -> Result<(), WaveError> {
-    handle_method_with_body(HttpMethod::Patch, url, params, form, verbose, spinner_msg).await
+    handle_method_with_body(Method::PATCH, url, params, form, verbose, spinner_msg).await
 }
 
 pub async fn handle_delete(
@@ -318,7 +323,7 @@ pub async fn handle_delete(
 ) -> Result<(), WaveError> {
     let url = validate_url(url)?;
     let (headers, _) = validate_params(params)?;
-    let req = HttpRequest::new(&url, HttpMethod::Delete, None, headers_to_map(headers));
+    let req = HttpRequest::new(&url, Method::DELETE, None, headers_to_map(headers));
     execute_request_with_spinner(&req, spinner_msg, verbose).await
 }
 
@@ -409,13 +414,12 @@ fn prepare_collection_headers_and_body(
             (headers, json_str, false)
         }
         Some(collection::Body::Form(map)) => {
-            let form_data: Vec<(String, String)> = map.iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
+            let form_data: Vec<(String, String)> =
+                map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
             let mut header_map = http::HeaderMap::new();
             let body = http_client::RequestBody::form(form_data);
             let form_str = body.serialize(&mut header_map);
-            
+
             // Convert HeaderMap back to Vec for compatibility
             let form_headers: Vec<(String, String)> = header_map
                 .iter()
@@ -449,7 +453,7 @@ pub async fn handle_collection(
                         // Parse CLI params for potential override
                         let (cli_headers, cli_body) = parse_params(params);
                         match resolved.method {
-                            HttpMethod::Get => {
+                            Method::GET => {
                                 let collection_headers: Vec<(String, String)> =
                                     resolved.headers.unwrap_or_default().into_iter().collect();
                                 let (headers, _) = merge_headers_and_body(
@@ -460,13 +464,13 @@ pub async fn handle_collection(
                                 );
                                 let req = HttpRequest::new(
                                     &resolved.url,
-                                    HttpMethod::Get,
+                                    Method::GET,
                                     None,
                                     headers_to_map(headers),
                                 );
                                 execute_request_with_spinner(&req, &spinner_msg, verbose).await?;
                             }
-                            HttpMethod::Delete => {
+                            Method::DELETE => {
                                 let collection_headers: Vec<(String, String)> =
                                     resolved.headers.unwrap_or_default().into_iter().collect();
                                 let (headers, _) = merge_headers_and_body(
@@ -477,13 +481,13 @@ pub async fn handle_collection(
                                 );
                                 let req = HttpRequest::new(
                                     &resolved.url,
-                                    HttpMethod::Delete,
+                                    Method::DELETE,
                                     None,
                                     headers_to_map(headers),
                                 );
                                 execute_request_with_spinner(&req, &spinner_msg, verbose).await?;
                             }
-                            HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch => {
+                            Method::POST | Method::PUT | Method::PATCH => {
                                 let (collection_headers, collection_body, is_form) =
                                     prepare_collection_headers_and_body(&resolved);
 
