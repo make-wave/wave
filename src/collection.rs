@@ -263,24 +263,24 @@ requests:
         env::set_var("TEST_TOKEN", "secret123");
         let mut path = std::env::temp_dir();
         path.push("test_wave_collection.yaml");
-        fs::write(&path, yaml).unwrap();
+        fs::write(&path, yaml).expect("Test: Write test file");
         env::set_var("TEST_TOKEN", "secret123");
-        let coll = load_collection(path.to_str().unwrap()).unwrap();
-        let file_vars = coll.variables.clone().unwrap();
-        let req = coll.requests.iter().find(|r| r.name == "Get User").unwrap();
-        let resolved = resolve_request_vars(req, &file_vars).unwrap();
+        let coll = load_collection(path.to_str().expect("Test: Valid path")).expect("Test: Load collection");
+        let file_vars = coll.variables.clone().expect("Test: Variables exist");
+        let req = coll.requests.iter().find(|r| r.name == "Get User").expect("Test: Find request");
+        let resolved = resolve_request_vars(req, &file_vars).expect("Test: Resolve variables");
         assert_eq!(resolved.url, "https://api.example.com/users/42");
         assert_eq!(
             resolved
                 .headers
                 .as_ref()
-                .unwrap()
+                .expect("Test: Headers exist")
                 .get("Authorization")
-                .unwrap(),
+                .expect("Test: Auth header exists"),
             "Bearer secret123"
         );
         assert_eq!(
-            resolved.headers.as_ref().unwrap().get("Accept").unwrap(),
+            resolved.headers.as_ref().expect("Test: Headers exist").get("Accept").expect("Test: Accept header exists"),
             "application/json"
         );
     }
