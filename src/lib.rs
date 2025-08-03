@@ -1,21 +1,31 @@
 pub mod collection;
 pub mod error;
-pub mod http_client;
+pub mod http;
 pub mod printer;
 
 use clap::{Parser, Subcommand};
 use error::{CliError, CollectionError, WaveError};
-use http::{HeaderMap, Method};
-use http_client::{Client, HttpRequest, RequestBody, ReqwestBackend};
+use ::http::{HeaderMap, Method};
+use crate::http::{Client, HttpRequest, RequestBody, ReqwestBackend};
 use std::collections::HashMap;
 
+// Type aliases for clarity and consistency
+pub type KeyValuePairs = Vec<(String, String)>;
+pub type Headers = KeyValuePairs;
+pub type FormData = KeyValuePairs;
+
+// Re-export http_client types for backward compatibility
+pub mod http_client {
+    pub use crate::http::*;
+}
+
 /// Convert Vec of header tuples to HeaderMap
-fn headers_to_map(headers: Vec<(String, String)>) -> HeaderMap {
+fn headers_to_map(headers: Headers) -> HeaderMap {
     let mut header_map = HeaderMap::new();
     for (key, value) in headers {
         if let (Ok(header_name), Ok(header_value)) = (
-            key.parse::<http::HeaderName>(),
-            value.parse::<http::HeaderValue>(),
+            key.parse::<::http::HeaderName>(),
+            value.parse::<::http::HeaderValue>(),
         ) {
             header_map.insert(header_name, header_value);
         }
@@ -102,7 +112,7 @@ pub struct Cli {
     pub command: Command,
 }
 
-pub type HeaderDataTuple = (Vec<(String, String)>, Vec<(String, String)>);
+pub type HeaderDataTuple = (Headers, FormData);
 
 pub fn parse_params(params: &[String]) -> HeaderDataTuple {
     let mut headers = Vec::new();
@@ -328,15 +338,12 @@ pub async fn handle_delete(
 }
 
 /// Merge headers and body data, with CLI params overriding collection params
-type Headers = Vec<(String, String)>;
-type Body = Vec<(String, String)>;
-
 fn merge_headers_and_body(
     collection_headers: &[(String, String)],
     collection_body: &[(String, String)],
     cli_headers: &[(String, String)],
     cli_body: &[(String, String)],
-) -> (Headers, Body) {
+) -> (Headers, FormData) {
     let mut headers = collection_headers.to_vec();
     let mut body = collection_body.to_vec();
 
@@ -362,7 +369,7 @@ fn merge_headers_and_body(
 }
 
 /// Parse JSON string to key-value pairs
-fn parse_json_to_key_value_pairs(json_str: &str) -> Vec<(String, String)> {
+fn parse_json_to_key_value_pairs(json_str: &str) -> KeyValuePairs {
     if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
         if let Some(obj) = val.as_object() {
             return obj
@@ -375,7 +382,7 @@ fn parse_json_to_key_value_pairs(json_str: &str) -> Vec<(String, String)> {
 }
 
 /// Parse form data string to key-value pairs
-fn parse_form_to_key_value_pairs(form_str: &str) -> Vec<(String, String)> {
+fn parse_form_to_key_value_pairs(form_str: &str) -> KeyValuePairs {
     form_str
         .split('&')
         .filter_map(|pair| {
@@ -390,8 +397,8 @@ fn parse_form_to_key_value_pairs(form_str: &str) -> Vec<(String, String)> {
 // Collection request handling
 fn prepare_collection_headers_and_body(
     resolved: &collection::Request,
-) -> (Vec<(String, String)>, String, bool) {
-    let mut headers: Vec<(String, String)> = resolved
+) -> (Headers, String, bool) {
+    let mut headers: Headers = resolved
         .headers
         .clone()
         .unwrap_or_default()
@@ -414,14 +421,14 @@ fn prepare_collection_headers_and_body(
             (headers, json_str, false)
         }
         Some(collection::Body::Form(map)) => {
-            let form_data: Vec<(String, String)> =
+            let form_data: FormData =
                 map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-            let mut header_map = http::HeaderMap::new();
+            let mut header_map = ::http::HeaderMap::new();
             let body = http_client::RequestBody::form(form_data);
             let form_str = body.serialize(&mut header_map);
 
             // Convert HeaderMap back to Vec for compatibility
-            let form_headers: Vec<(String, String)> = header_map
+            let form_headers: Headers = header_map
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
                 .collect();
@@ -454,7 +461,7 @@ pub async fn handle_collection(
                         let (cli_headers, cli_body) = parse_params(params);
                         match resolved.method {
                             Method::GET => {
-                                let collection_headers: Vec<(String, String)> =
+                                let collection_headers: Headers =
                                     resolved.headers.unwrap_or_default().into_iter().collect();
                                 let (headers, _) = merge_headers_and_body(
                                     &collection_headers,
@@ -471,7 +478,7 @@ pub async fn handle_collection(
                                 execute_request_with_spinner(&req, &spinner_msg, verbose).await?;
                             }
                             Method::DELETE => {
-                                let collection_headers: Vec<(String, String)> =
+                                let collection_headers: Headers =
                                     resolved.headers.unwrap_or_default().into_iter().collect();
                                 let (headers, _) = merge_headers_and_body(
                                     &collection_headers,
