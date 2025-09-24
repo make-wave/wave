@@ -337,6 +337,52 @@ pub async fn handle_delete(
     execute_request_with_spinner(&req, spinner_msg, verbose).await
 }
 
+/// Parse a CLI parameter value to appropriate JSON type
+fn parse_cli_value_to_json(value: &str) -> serde_json::Value {
+    // Try parsing as integer first
+    if let Ok(int_val) = value.parse::<i64>() {
+        return serde_json::Value::Number(int_val.into());
+    }
+    // Try parsing as float
+    if let Ok(float_val) = value.parse::<f64>() {
+        if let Some(num) = serde_json::Number::from_f64(float_val) {
+            return serde_json::Value::Number(num);
+        }
+    }
+    // Try parsing as boolean
+    if let Ok(bool_val) = value.parse::<bool>() {
+        return serde_json::Value::Bool(bool_val);
+    }
+    // Default to string
+    serde_json::Value::String(value.to_string())
+}
+
+/// Merge collection JSON with CLI parameters, preserving types from collection
+fn merge_json_with_cli_params(
+    collection_json: Option<serde_json::Value>,
+    cli_body: &[(String, String)],
+) -> serde_json::Value {
+    let mut result = collection_json.unwrap_or(serde_json::json!({}));
+
+    if let Some(obj) = result.as_object_mut() {
+        for (key, value) in cli_body {
+            // CLI parameters override collection values, with type inference
+            let json_value = parse_cli_value_to_json(value);
+            obj.insert(key.clone(), json_value);
+        }
+    } else if !cli_body.is_empty() {
+        // If collection doesn't have JSON body but CLI has params, create new object
+        let mut obj = serde_json::Map::new();
+        for (key, value) in cli_body {
+            let json_value = parse_cli_value_to_json(value);
+            obj.insert(key.clone(), json_value);
+        }
+        result = serde_json::Value::Object(obj);
+    }
+
+    result
+}
+
 /// Merge headers and body data, with CLI params overriding collection params
 fn merge_headers_and_body(
     collection_headers: &[(String, String)],
@@ -368,19 +414,6 @@ fn merge_headers_and_body(
     (headers, body)
 }
 
-/// Parse JSON string to key-value pairs
-fn parse_json_to_key_value_pairs(json_str: &str) -> KeyValuePairs {
-    if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
-        if let Some(obj) = val.as_object() {
-            return obj
-                .iter()
-                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or(&v.to_string()).to_string()))
-                .collect();
-        }
-    }
-    vec![]
-}
-
 /// Parse form data string to key-value pairs
 fn parse_form_to_key_value_pairs(form_str: &str) -> KeyValuePairs {
     form_str
@@ -395,7 +428,9 @@ fn parse_form_to_key_value_pairs(form_str: &str) -> KeyValuePairs {
 }
 
 // Collection request handling
-fn prepare_collection_headers_and_body(resolved: &collection::Request) -> (Headers, String, bool) {
+fn prepare_collection_headers_and_body(
+    resolved: &collection::Request,
+) -> (Headers, Option<serde_json::Value>, bool) {
     let mut headers: Headers = resolved
         .headers
         .clone()
@@ -415,8 +450,7 @@ fn prepare_collection_headers_and_body(resolved: &collection::Request) -> (Heade
             {
                 headers.push(("Content-Type".to_string(), "application/json".to_string()));
             }
-            let json_str = serde_json::to_string(&json_obj).unwrap_or_else(|_| "{}".to_string());
-            (headers, json_str, false)
+            (headers, Some(json_obj), false)
         }
         Some(collection::Body::Form(map)) => {
             let form_data: FormData = map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
@@ -430,9 +464,10 @@ fn prepare_collection_headers_and_body(resolved: &collection::Request) -> (Heade
                 .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
                 .collect();
             headers.extend(form_headers);
-            (headers, form_str, true)
+            // For form data, we return the serialized string as a JSON string value
+            (headers, Some(serde_json::Value::String(form_str)), true)
         }
-        None => (headers, "".to_string(), false),
+        None => (headers, None, false),
     }
 }
 
@@ -492,48 +527,47 @@ pub async fn handle_collection(
                                 execute_request_with_spinner(&req, &spinner_msg, verbose).await?;
                             }
                             Method::POST | Method::PUT | Method::PATCH => {
-                                let (collection_headers, collection_body, is_form) =
+                                let (collection_headers, collection_json, is_form) =
                                     prepare_collection_headers_and_body(&resolved);
 
-                                // Parse body data from collection body string
-                                let collection_body_data = if collection_body.is_empty() {
-                                    vec![]
-                                } else if collection_body.starts_with('{') {
-                                    // JSON body - parse it
-                                    parse_json_to_key_value_pairs(&collection_body)
-                                } else {
-                                    // Form body - parse it
-                                    parse_form_to_key_value_pairs(&collection_body)
-                                };
-
-                                let (merged_headers, merged_body_data) = merge_headers_and_body(
+                                // Merge headers (CLI overrides collection)
+                                let (merged_headers, _) = merge_headers_and_body(
                                     &collection_headers,
-                                    &collection_body_data,
+                                    &[],
                                     &cli_headers,
-                                    &cli_body,
+                                    &[],
                                 );
 
-                                // Reconstruct body from merged data
+                                // Handle body based on type
                                 let final_body = if is_form {
-                                    // Form encoding
+                                    // For form data, extract the string from JSON and merge with CLI params
+                                    let form_str = collection_json
+                                        .as_ref()
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let collection_body_data = if form_str.is_empty() {
+                                        vec![]
+                                    } else {
+                                        parse_form_to_key_value_pairs(&form_str)
+                                    };
+                                    let (_, merged_body_data) = merge_headers_and_body(
+                                        &[],
+                                        &collection_body_data,
+                                        &[],
+                                        &cli_body,
+                                    );
                                     merged_body_data
                                         .iter()
                                         .map(|(k, v)| format!("{k}={v}"))
                                         .collect::<Vec<_>>()
                                         .join("&")
                                 } else {
-                                    // JSON encoding
-                                    if merged_body_data.is_empty() {
-                                        "{}".to_string()
-                                    } else {
-                                        let json_obj: serde_json::Map<String, serde_json::Value> =
-                                            merged_body_data
-                                                .into_iter()
-                                                .map(|(k, v)| (k, serde_json::Value::String(v)))
-                                                .collect();
-                                        serde_json::to_string(&json_obj)
-                                            .unwrap_or_else(|_| "{}".to_string())
-                                    }
+                                    // JSON encoding - use new merge function that preserves types
+                                    let merged_json =
+                                        merge_json_with_cli_params(collection_json, &cli_body);
+                                    serde_json::to_string(&merged_json)
+                                        .unwrap_or_else(|_| "{}".to_string())
                                 };
 
                                 let req = HttpRequest::new(
@@ -566,9 +600,10 @@ pub async fn handle_collection(
             }
         }
         Err(_e) => {
+            println!("{_e}");
             return Err(WaveError::Collection(CollectionError::FileNotFound(
                 format!("{collection_name}.yaml or {collection_name}.yml"),
-            )))
+            )));
         }
     }
     Ok(())
@@ -576,6 +611,8 @@ pub async fn handle_collection(
 
 #[cfg(test)]
 mod tests {
+    use core::f64;
+
     use super::*;
 
     #[test]
@@ -778,5 +815,154 @@ mod tests {
         assert!(merged_body.contains(&("type".to_string(), "test".to_string())));
         // Check that new CLI body fields are added
         assert!(merged_body.contains(&("new_field".to_string(), "value".to_string())));
+    }
+
+    #[test]
+    fn test_parse_cli_value_to_json() {
+        // Test integer parsing
+        assert_eq!(
+            parse_cli_value_to_json("42"),
+            serde_json::Value::Number(42.into())
+        );
+        assert_eq!(
+            parse_cli_value_to_json("-123"),
+            serde_json::Value::Number((-123).into())
+        );
+
+        // Test float parsing
+        if let serde_json::Value::Number(n) = parse_cli_value_to_json("2.5") {
+            assert_eq!(n.as_f64(), Some(2.5));
+        } else {
+            panic!("Expected number value for float");
+        }
+
+        // Test boolean parsing
+        assert_eq!(
+            parse_cli_value_to_json("true"),
+            serde_json::Value::Bool(true)
+        );
+        assert_eq!(
+            parse_cli_value_to_json("false"),
+            serde_json::Value::Bool(false)
+        );
+
+        // Test string fallback
+        assert_eq!(
+            parse_cli_value_to_json("hello"),
+            serde_json::Value::String("hello".to_string())
+        );
+        assert_eq!(
+            parse_cli_value_to_json("123abc"),
+            serde_json::Value::String("123abc".to_string())
+        );
+        assert_eq!(
+            parse_cli_value_to_json(""),
+            serde_json::Value::String("".to_string())
+        );
+    }
+
+    #[test]
+    fn test_merge_json_with_cli_params_empty_collection() {
+        // Test with no collection JSON
+        let cli_params = vec![
+            ("name".to_string(), "alice".to_string()),
+            ("age".to_string(), "30".to_string()),
+            ("active".to_string(), "true".to_string()),
+        ];
+
+        let result = merge_json_with_cli_params(None, &cli_params);
+
+        let expected = serde_json::json!({
+            "name": "alice",
+            "age": 30,
+            "active": true
+        });
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_merge_json_with_cli_params_preserve_types() {
+        // Create collection JSON with various types
+        let collection_json = serde_json::json!({
+            "user_id": 42,
+            "score": 98.5,
+            "active": true,
+            "name": "original",
+            "metadata": {
+                "created": "2023-01-01"
+            }
+        });
+
+        // CLI params that should override some values
+        let cli_params = vec![
+            ("name".to_string(), "updated".to_string()),
+            ("new_field".to_string(), "123".to_string()),
+        ];
+
+        let result = merge_json_with_cli_params(Some(collection_json), &cli_params);
+
+        let expected = serde_json::json!({
+            "user_id": 42,           // Preserved from collection
+            "score": 98.5,           // Preserved from collection
+            "active": true,          // Preserved from collection
+            "name": "updated",       // Overridden by CLI (as string)
+            "metadata": {            // Preserved from collection
+                "created": "2023-01-01"
+            },
+            "new_field": 123         // Added from CLI (parsed as number)
+        });
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_merge_json_with_cli_params_no_cli_params() {
+        // Test that collection JSON is preserved when no CLI params
+        let collection_json = serde_json::json!({
+            "count": 42,
+            "rate": f64::consts::PI,
+            "enabled": false
+        });
+
+        let result = merge_json_with_cli_params(Some(collection_json.clone()), &[]);
+
+        assert_eq!(result, collection_json);
+    }
+
+    #[test]
+    fn test_merge_json_with_cli_params_type_inference() {
+        // Test that CLI parameters are properly typed
+        let collection_json = serde_json::json!({});
+
+        let cli_params = vec![
+            ("integer".to_string(), "42".to_string()),
+            ("negative".to_string(), "-10".to_string()),
+            ("float".to_string(), "2.5".to_string()),
+            ("bool_true".to_string(), "true".to_string()),
+            ("bool_false".to_string(), "false".to_string()),
+            ("string".to_string(), "hello world".to_string()),
+            ("number_like_string".to_string(), "123abc".to_string()),
+        ];
+
+        let result = merge_json_with_cli_params(Some(collection_json), &cli_params);
+
+        assert_eq!(result["integer"], serde_json::Value::Number(42.into()));
+        assert_eq!(result["negative"], serde_json::Value::Number((-10).into()));
+        if let serde_json::Value::Number(n) = &result["float"] {
+            assert_eq!(n.as_f64(), Some(2.5));
+        } else {
+            panic!("Expected number value for float");
+        }
+        assert_eq!(result["bool_true"], serde_json::Value::Bool(true));
+        assert_eq!(result["bool_false"], serde_json::Value::Bool(false));
+        assert_eq!(
+            result["string"],
+            serde_json::Value::String("hello world".to_string())
+        );
+        assert_eq!(
+            result["number_like_string"],
+            serde_json::Value::String("123abc".to_string())
+        );
     }
 }
