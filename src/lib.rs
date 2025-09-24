@@ -191,8 +191,19 @@ pub fn validate_url(url: &str) -> Result<String, WaveError> {
         format!("http://{url}")
     };
 
-    // Basic URL validation
-    if !url_with_scheme.contains('.') {
+    // Basic URL validation - allow localhost, IP addresses, and domains with dots
+    let url_without_scheme = url_with_scheme
+        .strip_prefix("http://")
+        .or_else(|| url_with_scheme.strip_prefix("https://"))
+        .unwrap_or(&url_with_scheme);
+
+    let host_part = url_without_scheme
+        .split('/')
+        .next()
+        .unwrap_or(url_without_scheme);
+    let host_part = host_part.split(':').next().unwrap_or(host_part);
+
+    if !url_with_scheme.contains('.') && host_part != "localhost" {
         return Err(WaveError::Cli(CliError::InvalidUrl(url.to_string())));
     }
 
@@ -684,8 +695,18 @@ mod tests {
 
     #[test]
     fn test_validate_url_rejects_invalid() {
-        assert!(validate_url("localhost").is_err()); // No dot
-        assert!(validate_url("not-a-url").is_err()); // No dot
+        assert!(validate_url("not-a-url").is_err()); // No dot and not localhost
+    }
+
+    #[test]
+    fn test_validate_url_accepts_localhost() {
+        assert!(validate_url("localhost").is_ok());
+        assert!(validate_url("localhost:8080").is_ok());
+        assert_eq!(validate_url("localhost").unwrap(), "http://localhost");
+        assert_eq!(
+            validate_url("localhost:8080").unwrap(),
+            "http://localhost:8080"
+        );
     }
 
     #[test]
@@ -752,7 +773,7 @@ mod tests {
         assert!(validate_url("https://").is_err());
         assert!(validate_url("http://").is_err());
         assert!(validate_url("ftp://example.com").is_ok()); // We allow any protocol and add http if missing
-        assert!(validate_url("localhost:8080").is_err()); // No dot
+        assert!(validate_url("localhost:8080").is_ok()); // localhost is valid
         assert!(validate_url("192.168.1.1").is_ok()); // IP addresses have dots
     }
 
