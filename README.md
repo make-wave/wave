@@ -57,7 +57,7 @@ wave -c test create-user newkey=newvalue
 
 - **Headers:** Use `key:value` syntax, e.g. `Authorization:Bearer123`
 - **Body Data:** Use `key=value` syntax, e.g. `name=alice`. Defaults to JSON. Specify form data with `--form`. The correct `Content-Type` header is applied automatically.
-- **Collections:** Save requests in YAML files in the `.wave` directory and run them by name. E.g. for a request called `my_request` in `.wave/my_collection.yml`: `wave my_collection my_request`
+- **Collections:** Save requests in YAML files in the `.wave` directory and run them by name. E.g. for a request called `my_request` in `.wave/my_collection.yml`: `wave -c my_collection my_request`
 
 ### Example Collection YAML
 
