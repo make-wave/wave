@@ -53,11 +53,15 @@ wave -c test get-user-info
 
 ## Request create-user from .wave/test.yml with additional body data
 wave -c test create-user newkey=newvalue
+
+## Override (or inject) a variable defined in the YAML's variables block
+wave -c test get-user-info --var user_id=99 --var base_url=https://staging.example.com
 ```
 
 - **Headers:** Use `key:value` syntax, e.g. `Authorization:Bearer123`
 - **Body Data:** Use `key=value` syntax, e.g. `name=alice`. Defaults to JSON. Specify form data with `--form`. The correct `Content-Type` header is applied automatically.
 - **Collections:** Save requests in YAML files in the `.wave` directory and run them by name. E.g. for a request called `my_request` in `.wave/my_collection.yml`: `wave -c my_collection my_request`
+- **Variable overrides:** Use `--var KEY=VALUE` (repeatable) on a collection request to override a value from the YAML `variables:` block or inject a new one. CLI overrides win over the YAML values. Accepts `--var KEY=VALUE` or `--var=KEY=VALUE`.
 
 ### Example Collection YAML
 

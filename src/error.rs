@@ -86,6 +86,8 @@ pub enum CliError {
     InvalidBodyFormat(String),
     /// HTTP method is not supported
     UnsupportedMethod(String),
+    /// Variable override (--var) is malformed
+    InvalidVarOverride(String),
 }
 
 /// Parsing related errors
@@ -180,6 +182,9 @@ impl fmt::Display for CliError {
             }
             CliError::UnsupportedMethod(method) => {
                 write!(f, "Unsupported HTTP method: '{method}'. Supported methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS")
+            }
+            CliError::InvalidVarOverride(msg) => {
+                write!(f, "Invalid variable override: {msg}")
             }
         }
     }
@@ -311,6 +316,9 @@ impl WaveError {
             }
             WaveError::Cli(CliError::InvalidBodyFormat(_)) => {
                 Some("Example: name=john age=30 active=true")
+            }
+            WaveError::Cli(CliError::InvalidVarOverride(_)) => {
+                Some("Example: --var user_id=42 --var base_url=https://staging.example.com")
             }
             _ => None,
         }
