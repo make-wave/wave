@@ -114,6 +114,52 @@ pub struct Cli {
 
 pub type HeaderDataTuple = (Headers, FormData);
 
+/// Extracts `--var KEY=VALUE` overrides from a list of trailing params.
+///
+/// Supports both `--var KEY=VALUE` (two tokens) and `--var=KEY=VALUE` (single
+/// token) forms. Returns the remaining params with all `--var` tokens removed,
+/// along with a map of overrides. CLI overrides win over collection variables.
+pub fn extract_var_overrides(
+    params: &[String],
+) -> Result<(Vec<String>, HashMap<String, String>), WaveError> {
+    let mut overrides = HashMap::new();
+    let mut remaining = Vec::with_capacity(params.len());
+    let mut i = 0;
+    while i < params.len() {
+        let param = &params[i];
+        let kv = if param == "--var" {
+            i += 1;
+            if i >= params.len() {
+                return Err(WaveError::Cli(CliError::InvalidVarOverride(
+                    "'--var' requires a KEY=VALUE argument".to_string(),
+                )));
+            }
+            params[i].as_str()
+        } else if let Some(rest) = param.strip_prefix("--var=") {
+            rest
+        } else {
+            remaining.push(param.clone());
+            i += 1;
+            continue;
+        };
+
+        let (key, value) = kv.split_once('=').ok_or_else(|| {
+            WaveError::Cli(CliError::InvalidVarOverride(format!(
+                "'{kv}' must be in 'KEY=VALUE' format"
+            )))
+        })?;
+        let key = key.trim();
+        if key.is_empty() {
+            return Err(WaveError::Cli(CliError::InvalidVarOverride(format!(
+                "'{kv}' has an empty key"
+            ))));
+        }
+        overrides.insert(key.to_string(), value.to_string());
+        i += 1;
+    }
+    Ok((remaining, overrides))
+}
+
 pub fn parse_params(params: &[String]) -> HeaderDataTuple {
     let mut headers = Vec::new();
     let mut data = Vec::new();
@@ -140,6 +186,12 @@ pub fn validate_params(params: &[String]) -> Result<HeaderDataTuple, WaveError> 
         // Ignore --form if present in params
         if param == "--form" {
             continue;
+        }
+
+        if param == "--var" || param.starts_with("--var=") {
+            return Err(WaveError::Cli(CliError::InvalidVarOverride(
+                "'--var' is only supported on collection requests (wave -c ...)".to_string(),
+            )));
         }
 
         if let Some((k, v)) = param.split_once(':') {
@@ -493,9 +545,14 @@ pub async fn handle_collection(
     let coll_result =
         collection::load_collection(&yaml_path).or_else(|_| collection::load_collection(&yml_path));
 
+    let (params, var_overrides) = extract_var_overrides(params)?;
+    let params = params.as_slice();
     match coll_result {
         Ok(coll) => {
-            let file_vars = coll.variables.unwrap_or_default();
+            let mut file_vars = coll.variables.unwrap_or_default();
+            for (k, v) in var_overrides {
+                file_vars.insert(k, v);
+            }
             match coll.requests.iter().find(|r| r.name == request_name) {
                 Some(req) => match collection::resolve_request_vars(req, &file_vars) {
                     Ok(resolved) => {
@@ -985,5 +1042,115 @@ mod tests {
             result["number_like_string"],
             serde_json::Value::String("123abc".to_string())
         );
+    }
+
+    #[test]
+    fn test_extract_var_overrides_two_token_form() {
+        let params = vec![
+            "--var".to_string(),
+            "user_id=99".to_string(),
+            "name=alice".to_string(),
+            "X-Test:1".to_string(),
+        ];
+        let (remaining, overrides) = extract_var_overrides(&params).unwrap();
+        assert_eq!(
+            remaining,
+            vec!["name=alice".to_string(), "X-Test:1".to_string()]
+        );
+        assert_eq!(overrides.get("user_id"), Some(&"99".to_string()));
+        assert_eq!(overrides.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_var_overrides_equals_form() {
+        let params = vec![
+            "--var=base_url=https://staging.example.com".to_string(),
+            "--var".to_string(),
+            "token=abc".to_string(),
+        ];
+        let (remaining, overrides) = extract_var_overrides(&params).unwrap();
+        assert!(remaining.is_empty());
+        assert_eq!(
+            overrides.get("base_url"),
+            Some(&"https://staging.example.com".to_string())
+        );
+        assert_eq!(overrides.get("token"), Some(&"abc".to_string()));
+    }
+
+    #[test]
+    fn test_extract_var_overrides_value_with_equals() {
+        // Values may contain '=' (split_once gives us key + everything after the first '=')
+        let params = vec!["--var=query=a=b&c=d".to_string()];
+        let (_, overrides) = extract_var_overrides(&params).unwrap();
+        assert_eq!(overrides.get("query"), Some(&"a=b&c=d".to_string()));
+    }
+
+    #[test]
+    fn test_extract_var_overrides_missing_arg() {
+        let params = vec!["--var".to_string()];
+        assert!(extract_var_overrides(&params).is_err());
+    }
+
+    #[test]
+    fn test_extract_var_overrides_no_equals() {
+        let params = vec!["--var".to_string(), "no_equals_here".to_string()];
+        assert!(extract_var_overrides(&params).is_err());
+    }
+
+    #[test]
+    fn test_extract_var_overrides_empty_key() {
+        let params = vec!["--var=  =value".to_string()];
+        assert!(extract_var_overrides(&params).is_err());
+    }
+
+    #[test]
+    fn test_validate_params_rejects_var_flag() {
+        // --var is collection-only; bare HTTP commands must reject it
+        assert!(validate_params(&["--var".to_string()]).is_err());
+        assert!(validate_params(&["--var=foo=bar".to_string()]).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_handle_collection_var_override() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("wave_var_test_{}", std::process::id()));
+        let wave_dir = dir.join(".wave");
+        fs::create_dir_all(&wave_dir).expect("Test: create .wave");
+        let yaml = r#"
+variables:
+  user_id: "1"
+  host: localhost:1
+requests:
+  - name: get-user
+    method: GET
+    url: http://${host}/users/${user_id}
+"#;
+        fs::write(wave_dir.join("override_test.yaml"), yaml).expect("Test: write yaml");
+
+        // resolve_request_vars is what we actually want to verify the override path
+        // routes through. Do that directly without making network calls.
+        let coll =
+            collection::load_collection(wave_dir.join("override_test.yaml").to_str().unwrap())
+                .expect("Test: load");
+        let mut file_vars = coll.variables.clone().expect("Test: vars");
+        let (_, overrides) = extract_var_overrides(&[
+            "--var".to_string(),
+            "user_id=99".to_string(),
+            "--var=new_var=injected".to_string(),
+        ])
+        .expect("Test: extract overrides");
+        for (k, v) in overrides {
+            file_vars.insert(k, v);
+        }
+        let req = coll
+            .requests
+            .iter()
+            .find(|r| r.name == "get-user")
+            .expect("Test: find request");
+        let resolved = collection::resolve_request_vars(req, &file_vars).expect("Test: resolve");
+        assert_eq!(resolved.url, "http://localhost:1/users/99");
+
+        // Cleanup
+        let _ = fs::remove_dir_all(&dir);
     }
 }
