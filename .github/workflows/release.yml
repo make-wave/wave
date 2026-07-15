@@ -105,4 +105,11 @@ jobs:
            generate_release_notes: true
          env:
            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
- 
+
+       # Notify homebrew-tap to update its formula
+       - name: Dispatch homebrew-tap update
+         uses: peter-evans/repository-dispatch@v3
+         with:
+           token: ${{ secrets.TAP_PAT }}
+           repository: make-wave/homebrew-tap
+           event-type: wave-release
