@@ -118,9 +118,10 @@ async fn run() -> Result<(), WaveError> {
             collection,
             request,
             verbose,
+            var,
             params,
         } => {
-            handle_collection(&collection, &request, verbose, &params).await?;
+            handle_collection(&collection, &request, verbose, &var, &params).await?;
         }
     }
     Ok(())

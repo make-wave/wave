@@ -98,6 +98,9 @@ pub enum Command {
         request: String,
         #[arg(short, long)]
         verbose: bool,
+        /// Variable overrides in KEY=VALUE format (overrides collection variables)
+        #[arg(long = "var", value_name = "KEY=VALUE")]
+        var: Vec<String>,
         /// Headers and body data (key:value or key=value)
         #[arg(value_parser, trailing_var_arg = true)]
         params: Vec<String>,
@@ -538,6 +541,7 @@ pub async fn handle_collection(
     collection_name: &str,
     request_name: &str,
     verbose: bool,
+    var_overrides: &[String],
     params: &[String],
 ) -> Result<(), WaveError> {
     let yaml_path = format!(".wave/{collection_name}.yaml");
@@ -545,13 +549,22 @@ pub async fn handle_collection(
     let coll_result =
         collection::load_collection(&yaml_path).or_else(|_| collection::load_collection(&yml_path));
 
-    let (params, var_overrides) = extract_var_overrides(params)?;
-    let params = params.as_slice();
     match coll_result {
         Ok(coll) => {
             let mut file_vars = coll.variables.unwrap_or_default();
-            for (k, v) in var_overrides {
-                file_vars.insert(k, v);
+            for kv in var_overrides {
+                let (k, v) = kv.split_once('=').ok_or_else(|| {
+                    WaveError::Cli(CliError::InvalidVarOverride(format!(
+                        "'{kv}' must be in KEY=VALUE format"
+                    )))
+                })?;
+                let key = k.trim();
+                if key.is_empty() {
+                    return Err(WaveError::Cli(CliError::InvalidVarOverride(format!(
+                        "'{kv}' has an empty key"
+                    ))));
+                }
+                file_vars.insert(key.to_string(), v.to_string());
             }
             match coll.requests.iter().find(|r| r.name == request_name) {
                 Some(req) => match collection::resolve_request_vars(req, &file_vars) {
