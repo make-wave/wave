@@ -105,4 +105,4 @@ Run `wave --help` for full command-line options and usage details.
 
 ## Why build this? Doesn't it already exist?
 
-There are definitely other HTTP client CLIs and at least some of them are definitely very good. Look [httpie](https://github.com/httpie/cli), for example! I wanted one that would allow me to store collections in a plaintext format alongside sourcecode for web APIs so that they could be used for testing. Maybe another one already has that feature, but I didn't look very hard because I was excited about building my own.
+There are definitely other HTTP client CLIs and at least some of them are definitely very good. Look at [httpie](https://github.com/httpie/cli), for example! I wanted one that would allow me to store collections in a plaintext format alongside sourcecode for web APIs so that they could be used for testing. Maybe another one already has that feature, but I didn't look very hard because I was excited about building my own.
